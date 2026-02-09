@@ -1,0 +1,33 @@
+---
+description: "SOLAT run_id and artefact layout: run_id = {type}_{date}_{time}_{uuid8}; data/runs/{run_id}/ layout per CONVENTIONS. Use runtime.artefacts or equivalent."
+alwaysApply: false
+globs: "engine/solat_engine/runtime/**/*.py"
+---
+
+# SOLAT Run ID & Artefact Layout Agent (10.1)
+
+When editing code that writes under data/runs/ or generates run_id (e.g. [engine/solat_engine/runtime/](engine/solat_engine/runtime/)), enforce the canonical run_id format and directory layout. Do not invent new top-level files without updating [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
+
+## run_id format
+
+- **Pattern:** `{type}_{date}_{time}_{uuid8}`
+- **type:** backtest | paper | live
+- **date:** YYYYMMDD
+- **time:** HHMMSS
+- **uuid8:** Short UUID (e.g. first 8 chars of uuid4 hex)
+
+Examples: backtest_20240115_143022_a1b2c3d4, paper_20240115_160000_b2c3d4e5, live_20240115_090000_c3d4e5f6.
+
+## Directory layout (data/runs/{run_id}/)
+
+- config.json — Configuration snapshot
+- signals.parquet — Generated signals
+- orders.parquet — Orders placed
+- fills.parquet — Order fills
+- equity.parquet — Equity curve
+- metrics.json — Performance metrics
+- logs/ — engine.log, trades.log
+
+Use [engine/solat_engine/runtime/artefacts.py](engine/solat_engine/runtime/artefacts.py) (ArtefactManager) or equivalent to create run dirs and write files; do not ad-hoc create different top-level files without documenting in CONVENTIONS.
+
+Reference: [docs/CONVENTIONS.md](docs/CONVENTIONS.md) (Run Artefacts, Run ID Format).

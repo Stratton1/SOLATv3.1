@@ -1,0 +1,50 @@
+---
+description: "SOLAT desktop: TypeScript/React conventions (Prettier, ESLint, naming, components, hooks)."
+alwaysApply: false
+globs: "apps/desktop/src/**/*.{ts,tsx}"
+---
+
+# SOLAT TypeScript/React (Desktop) Conventions
+
+When editing or generating TypeScript/React under `apps/desktop/src/`, apply these rules. Output conventions-compliant code or list violations.
+
+## Code style
+
+- **Formatter:** Prettier (via ESLint)
+- **Linter:** ESLint with TypeScript rules
+- **Line length:** 100 characters
+
+## Naming
+
+- **Component files:** `PascalCase.tsx` (e.g. `StatusScreen.tsx`)
+- **Utility/hook files:** `camelCase.ts` or `useCamelCase.ts` (e.g. `useEngineHealth.ts`)
+- **Components:** `PascalCase` (e.g. `StatusScreen`)
+- **Hooks:** `use` prefix (e.g. `useEngineHealth`)
+- **Types/interfaces:** `PascalCase` (e.g. `HealthData`)
+
+## Components
+
+```typescript
+// Props interface defined above component
+interface StatusScreenProps {
+  health: HealthData | null;
+  isLoading: boolean;
+}
+
+// Export named function (not default)
+export function StatusScreen({ health, isLoading }: StatusScreenProps) {
+  // ...
+}
+```
+
+- Define props interface above the component
+- Export named function, not default export
+- No `any`; use proper types
+
+## State management
+
+- Use React hooks (`useState`, `useEffect`, `useCallback`)
+- Extract complex state to custom hooks
+- Avoid prop drilling beyond 2 levels
+
+Reference: `docs/CONVENTIONS.md`.

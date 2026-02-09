@@ -1,0 +1,62 @@
+---
+description: "SOLAT engine: Python conventions (ruff, mypy, naming, domain, logging, tests)."
+alwaysApply: false
+globs: "engine/**/*.py"
+---
+
+# SOLAT Python (Engine) Conventions
+
+When editing or generating Python under `engine/`, apply these rules. Output conventions-compliant code or list violations.
+
+## Code style
+
+- **Formatter:** ruff format
+- **Linter:** ruff check
+- **Type checker:** mypy (strict)
+- **Line length:** 100 characters
+- **Imports:** Sorted by ruff (isort)
+
+## Naming
+
+- **Modules:** `snake_case` (e.g. `broker_adapter.py`)
+- **Classes:** `PascalCase` (e.g. `BrokerAdapter`)
+- **Functions/methods:** `snake_case` (e.g. `get_positions`)
+- **Constants:** `SCREAMING_SNAKE_CASE` (e.g. `MAX_RETRIES`)
+- **Private:** Single underscore prefix (e.g. `_internal_method`)
+
+## Domain models
+
+- Use Pydantic `BaseModel` for domain objects
+- Use `Decimal` for all price/quantity/amount (never float for money)
+- Prefer immutable models (`frozen = True`) where possible
+- Use `UUID` for internal IDs, `str` for broker IDs
+
+## Logging
+
+```python
+from solat_engine.logging import get_logger
+logger = get_logger(__name__)
+
+# Structured logging
+logger.info("Order submitted", extra={"order_id": str(order.id), "symbol": order.symbol})
+
+# Never log secrets
+# BAD: logger.info(f"API key: {api_key}")
+# GOOD: logger.info("API key configured: %s", bool(api_key))
+```
+
+## Error handling
+
+- Define specific exceptions in `solat_engine/exceptions.py`
+- Catch specific exceptions, not bare `except:`
+- Log with full context before re-raising
+- Use `httpx.HTTPStatusError` for HTTP errors
+
+## Testing
+
+- Test files: `test_<module>.py`
+- Use pytest with pytest-asyncio for async tests
+- Aim for >80% coverage on core logic
+- Use fixtures for common setup
+
+Reference: `docs/CONVENTIONS.md`.

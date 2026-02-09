@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/tauri-v2.0.0/crates/tauri-utils/schema.json",
+  "identifier": "default",
+  "description": "Default capability set for SOLAT Trading Terminal",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-message",
+    "fs:allow-write-text-file"
+  ]
+}

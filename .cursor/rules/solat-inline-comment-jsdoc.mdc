@@ -1,0 +1,23 @@
+---
+description: "SOLAT: file header (File/Purpose), JSDoc for exported functions, docstrings in Python. Apply when creating new file or adding docs to a function."
+alwaysApply: false
+globs: "engine/**/*.py"
+---
+
+# SOLAT Inline Comment & JSDoc Agent (7.3)
+
+When creating a new file or when the user asks to **"add docs to this function"**, ensure **file header** and **exported function docs** are present. Output filled-in header and JSDoc/docstring.
+
+## Python (engine)
+
+- **File header:** At top of file, docstring or comment: module name and one-line purpose (e.g. "Order domain model. Represents a trading order sent to the broker.").
+- **Exported functions/classes:** Docstring with summary; Args/Returns where helpful. Follow existing style in [engine/solat_engine/](engine/solat_engine/).
+- **Complex blocks:** One-line comment above non-obvious logic.
+
+## TypeScript/React (desktop)
+
+- **File header:** Comment at top: "File: <filename>. Purpose: <one line>."
+- **Exported functions/components:** JSDoc with @param, @returns (or @description). Props interface documented above component.
+- **Complex blocks:** One-line comment where it helps.
+
+Apply to engine and apps/desktop/src when creating new file or editing for docs. Globs: engine/**/*.py; for desktop use same header/JSDoc rules in apps/desktop/src/**/*.ts and *.tsx. Reference [docs/CONVENTIONS.md](docs/CONVENTIONS.md).

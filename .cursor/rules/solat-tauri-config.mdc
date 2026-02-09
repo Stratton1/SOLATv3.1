@@ -1,0 +1,27 @@
+---
+description: "SOLAT Tauri: capabilities, tauri.conf.json, CSP. Allow only required permissions; CSP connect-src to engine only; no broad fs/shell unless justified."
+alwaysApply: false
+globs: "apps/desktop/src-tauri/**"
+---
+
+# SOLAT Tauri Config & Permissions Agent (9.1)
+
+When editing [apps/desktop/src-tauri/](apps/desktop/src-tauri/) (including [tauri.conf.json](apps/desktop/src-tauri/tauri.conf.json) and [capabilities/](apps/desktop/src-tauri/capabilities/)), enforce minimal permissions and CSP that allows only the engine.
+
+## CSP (tauri.conf.json app.security.csp)
+
+- **connect-src:** Must include only 'self' and engine: `http://127.0.0.1:8765 ws://127.0.0.1:8765`. No arbitrary external URLs.
+- **default-src:** 'self'.
+- **script-src:** 'self' (no unsafe-inline for scripts unless required; style-src may allow 'unsafe-inline' for CSS if needed).
+- Do not set dangerousDisableAssetCspModification to true unless justified and documented.
+
+## Capabilities
+
+- Grant only permissions the app needs (e.g. shell open for opening links). Do not add broad fs or shell scope without justification.
+- Capability files in [apps/desktop/src-tauri/capabilities/](apps/desktop/src-tauri/capabilities/) define which Tauri APIs the frontend can use; keep allowlists minimal.
+
+## Output
+
+When adding a native feature: **minimal permission** (capability + scope) and **CSP update** (if new connect target); otherwise leave CSP as is (engine only).
+
+Reference: [docs/SECURITY.md](docs/SECURITY.md) (Content Security Policy).

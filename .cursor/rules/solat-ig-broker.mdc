@@ -1,0 +1,39 @@
+---
+description: "SOLAT IG broker: AsyncIGClient, auth, rate limit, version headers, redaction. Use rate_limit; redact in logs; handle IGAuthError/IGRateLimitError/IGAPIError; never log credentials."
+alwaysApply: false
+globs: "engine/solat_engine/broker/ig/**/*.py"
+---
+
+# SOLAT IG Broker Agent
+
+When editing `engine/solat_engine/broker/ig/`, enforce: use rate limiter; redact sensitive data in logs; handle IGAuthError, IGRateLimitError, IGAPIError; never log credentials or raw auth headers.
+
+## Components
+
+- **client.py** — AsyncIGClient: session auth (CST, X-SECURITY-TOKEN), retries, demo vs live base URL. Use version headers per IG API (e.g. Version: 2 for session, 1 for accounts).
+- **rate_limit.py** — Token bucket or equivalent; all outbound IG calls must go through rate limiter.
+- **redaction.py** — redact_sensitive() for request/response before logging; safe_log_request() where applicable.
+- **types.py** — IG response models (IGAccount, IGLoginResponse, IGMarketDetails, etc.).
+
+## Rules
+
+1. **Rate limiting:** Every IG API call must respect the rate limiter; no direct httpx calls that bypass it.
+2. **Redaction:** Never log request/response bodies or headers that may contain API key, password, CST, X-SECURITY-TOKEN; use redact_sensitive() or equivalent before any logger call.
+3. **Errors:** Catch and handle IGAuthError (e.g. re-auth or fail), IGRateLimitError (backoff/retry), IGAPIError (status_code, error_code); log with redacted context; never expose credentials in error messages.
+4. **Version headers:** Use the correct IG API version header per endpoint (session, accounts, markets, positions, etc.); see client.py for existing constants.
+5. **Demo vs live:** Use config (ig_base_url, ig_acc_type) to choose base URL; never hardcode credentials or URLs.
+
+## Anti-patterns
+
+- Logging `request.headers`, `response.json()`, or any dict that may contain auth fields.
+- Bypassing rate_limit before httpx request.
+- Bare `except:` or re-raising without logging (with redacted context).
+- Hardcoded API key, password, or base URL.
+
+## Adding a new IG endpoint
+
+- Use existing AsyncIGClient pattern: rate_limit → request with correct Version header → handle 401 (re-auth), 429 (rate limit), 4xx/5xx (IGAPIError).
+- Add response model to types.py if needed.
+- Do not log response body without redaction.
+
+Reference: `docs/SECURITY.md`, `engine/solat_engine/broker/ig/redaction.py`, `engine/solat_engine/config.py` (IG_*).

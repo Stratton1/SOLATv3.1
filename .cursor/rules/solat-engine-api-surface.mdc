@@ -1,0 +1,41 @@
+---
+description: "SOLAT engine API: REST and WebSocket contracts. Version or extend; do not remove fields without deprecation. Apply when editing engine/solat_engine/api/ or main.py."
+alwaysApply: false
+globs: "engine/solat_engine/api/**/*.py"
+---
+
+# SOLAT Engine API Surface Agent (4.1)
+
+When editing [engine/solat_engine/api/](engine/solat_engine/api/) or [engine/solat_engine/main.py](engine/solat_engine/main.py), keep REST and WebSocket contracts consistent for the desktop client. **Version or extend; do not remove fields without deprecation.**
+
+## REST routes
+
+| Prefix | Router | Purpose |
+|--------|--------|---------|
+| (root) | main | GET /health, GET /config, GET / |
+| /ig | ig_routes | IG session, accounts, market search, status |
+| /catalog | catalog_routes | Instrument catalogue bootstrap, list, summary |
+| /data | data_routes | Data sync, bars, quality, summary |
+| /backtest | backtest_routes | Run backtest, sweep, job status, results |
+| /execution | execution_routes | Connect, arm, kill switch, positions, close |
+| /market | market_data_routes | Subscribe, unsubscribe, status, quotes, stop |
+| /chart | chart_routes | Overlays, signals |
+
+## Response shapes (main)
+
+- **HealthResponse:** status, version, time, uptime_seconds
+- **ConfigResponse:** mode, env, data_dir, app_env, ig_configured (redacted)
+
+## WebSocket (/ws)
+
+- **heartbeat:** type, count, timestamp (1s interval)
+- **connected:** type, version, mode, timestamp (on connect)
+- **sync_***, backtest_***, execution_***, quote_received, bar_received, broker_connected/disconnected:** forwarded from EventBus; include type, run_id/timestamp, and event data
+
+## Rules
+
+- Adding an endpoint: document path, method, request/response shape; add to ARCHITECTURE if new capability.
+- Changing a response: extend with new optional fields or version the route; do not remove or rename existing fields without deprecation and migration note.
+- WebSocket: new event types must be documented and consumed by UI if user-facing; keep type and payload structure stable.
+
+Reference: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (Communication Protocols).

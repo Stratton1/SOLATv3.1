@@ -1,0 +1,25 @@
+---
+description: "SOLAT Tauri Rust: invoke pattern, minimal Rust layer. Most logic in Python engine; document new commands in frontend."
+alwaysApply: false
+globs: "apps/desktop/src-tauri/**/*.rs"
+---
+
+# SOLAT Rust (Tauri Backend) Agent (9.2)
+
+When editing [apps/desktop/src-tauri/**/*.rs](apps/desktop/src-tauri/) or adding a Tauri command, keep the Rust layer **minimal** and document any new invoke command in the frontend.
+
+## Architecture
+
+- **Logic lives in Python engine.** The desktop is a thin UI; all trading, backtest, and broker logic run in the engine. Rust is for window lifecycle, plugins (e.g. shell), and optional invoke commands only.
+- **Invoke:** If the frontend calls `invoke('command_name', { ... })`, the Rust backend must register a handler with the same name; handler signature and payload must match what the frontend sends.
+- **main.rs:** Current setup uses tauri::Builder, shell plugin, and generate_context!(); add `.invoke_handler(tauri::generate_handler![cmd1, cmd2])` when adding commands.
+
+## Rules
+
+- **Minimal Rust:** Prefer solving in TypeScript (calling engine HTTP/WS) over new Tauri commands. Add Rust commands only when native API or process control is required.
+- **Document new commands:** If you add a new `#[tauri::command]`, document the command name and payload in the frontend (e.g. in the hook or component that calls invoke) or in ARCHITECTURE.
+- **Style:** Follow Rust idioms; keep handlers small and delegate to engine or standard library where possible.
+
+## Output
+
+When adding or changing a command: **correct invoke handler** (function signature, #[tauri::command], register in generate_handler!) and **one-line doc** for the frontend (command name + args).

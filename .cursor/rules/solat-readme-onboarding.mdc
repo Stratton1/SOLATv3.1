@@ -1,0 +1,30 @@
+---
+description: "SOLAT README and onboarding: prerequisites, .env.example, dev.sh, ports 8765/1420, pointers to ARCHITECTURE, CONVENTIONS, SECURITY, ROADMAP."
+alwaysApply: false
+globs: "README.md"
+---
+
+# SOLAT README & Onboarding Agent (7.2 rule)
+
+When editing [README.md](README.md) or [.env.example](.env.example), keep the following in sync so new devs and Cursor can run the project without guessing.
+
+## Prerequisites
+
+- Python 3.11+ with [uv](https://github.com/astral-sh/uv)
+- Node.js 18+ with [pnpm](https://pnpm.io)
+- Rust (for Tauri) — [rustup](https://rustup.rs)
+
+## Quick start
+
+- Copy .env.example to .env; fill IG credentials if using broker features.
+- Run `./scripts/dev.sh` to start engine + Tauri UI (or `pnpm dev:engine` and `pnpm dev:ui` separately).
+- Engine: http://127.0.0.1:8765; Tauri dev server: port 1420.
+
+## Docs
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system design, data flows
+- [docs/ROADMAP.md](docs/ROADMAP.md) — phases, next steps
+- [docs/SECURITY.md](docs/SECURITY.md) — credentials, kill switch, demo/live
+- [docs/CONVENTIONS.md](docs/CONVENTIONS.md) — coding standards, run artefacts
+
+When adding env vars, add them to .env.example with a short comment and update README config table if present.

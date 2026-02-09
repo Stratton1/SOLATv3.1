@@ -1,0 +1,17 @@
+---
+description: "SOLAT config and env: cross-reference config.py with .env.example; new settings get env var and doc. Apply when adding config or env."
+alwaysApply: false
+globs: "engine/solat_engine/config.py"
+---
+
+# SOLAT Environment & Config Agent (8.2 rule)
+
+When adding a Settings field or new env var in [engine/solat_engine/config.py](engine/solat_engine/config.py), ensure [.env.example](.env.example) is updated and non-obvious vars are documented in README or CONVENTIONS.
+
+## Rules
+
+- **config.py:** Use Field with default and description; use SecretStr for any credential; use env_prefix SOLAT_ (or alias for IG_*). Add validator if needed (e.g. log_level, data_dir).
+- **.env.example:** Add every new env var used by config (or by app) with a comment; no real values.
+- **Docs:** If the setting affects security, ports, or run behaviour, mention in [README.md](README.md) config table or [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
+
+Do not add secrets to .env.example; use placeholders like "your_api_key_here".

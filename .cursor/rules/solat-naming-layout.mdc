@@ -1,0 +1,52 @@
+---
+description: "SOLAT: naming and file layout (dirs, files, symbols, env vars). Use when creating/renaming files or when user asks what to name something."
+alwaysApply: true
+globs: "**/*"
+---
+
+# SOLAT Naming & File Layout
+
+When creating or renaming files, or when the user asks "what should I name X?", apply these rules. Output suggested names or a list of renames. No codegen; naming and layout only.
+
+## Directories
+
+- **kebab-case** (e.g. `property-profile`, `user-auth`)
+- No spaces or underscores in directory names
+
+## Engine (Python)
+
+- **Modules:** `snake_case.py` (e.g. `broker_adapter.py`, `parquet_store.py`)
+- **Test files:** `test_<module>.py` (e.g. `test_ig_client.py`)
+
+## Desktop (TypeScript/React)
+
+- **Components:** `PascalCase.tsx` (e.g. `StatusScreen.tsx`, `ExecutionPanel.tsx`)
+- **Hooks:** `useCamelCase.ts` (e.g. `useEngineHealth.ts`, `useWebSocket.ts`)
+- **Utilities:** `camelCase.ts`
+- **Screens:** `PascalCase.tsx` under `apps/desktop/src/screens/` (e.g. `TerminalScreen.tsx`)
+
+## Variables, types, constants
+
+- **TypeScript/React:** `camelCase` for vars/props; `PascalCase` for types/interfaces; `UPPER_SNAKE_CASE` for constants
+- **Python:** `snake_case` for functions/vars; `PascalCase` for classes; `SCREAMING_SNAKE_CASE` for constants; single underscore for private
+
+## Environment variables
+
+- **UPPER_SNAKE_CASE** (e.g. `SOLAT_PORT`, `IG_API_KEY`, `MAX_RETRIES`)
+
+## SOLAT layout (where new code goes)
+
+- **Engine domain:** `engine/solat_engine/domain/` — Bar, Order, Signal, etc.
+- **Engine API:** `engine/solat_engine/api/` — new routes → new or existing `*_routes.py`
+- **Engine broker:** `engine/solat_engine/broker/ig/` — IG client, types, rate limit
+- **Engine strategies:** `engine/solat_engine/strategies/` — elite8.py, indicators.py
+- **Engine execution:** `engine/solat_engine/execution/` — router, risk, kill_switch
+- **Engine data:** `engine/solat_engine/data/` — Parquet, aggregate, quality
+- **Engine tests:** `engine/tests/` — `test_<module>.py`
+- **Desktop components:** `apps/desktop/src/components/`
+- **Desktop hooks:** `apps/desktop/src/hooks/`
+- **Desktop screens:** `apps/desktop/src/screens/`
+
+Avoid `any` in TypeScript. Use explicit types or interfaces.
+
+Reference: `docs/CONVENTIONS.md`, `.cursorrules`.

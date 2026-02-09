@@ -1,0 +1,26 @@
+---
+description: "SOLAT logging: get_logger(__name__), structured extra, no secrets in logs, redact_sensitive; trade/order/fill logged with ids and context."
+alwaysApply: false
+globs: "engine/**/*.py"
+---
+
+# SOLAT Logging & Audit Agent (5.3)
+
+When adding or changing logging in the engine (or execution), enforce: structured logging; no secrets in logs; trade/order/fill logged with ids and context. Output structured alternative and redaction reminder if needed.
+
+## Rules
+
+- **Logger:** `from solat_engine.logging import get_logger`; `logger = get_logger(__name__)`.
+- **Structured:** Use `extra={"key": value}` for context (e.g. order_id, symbol, run_id); prefer `logger.info("Message", extra={...})` over f-strings for structured data.
+- **No secrets:** Never log request/response bodies or headers that may contain auth (CST, X-SECURITY-TOKEN, API key, password). Use [engine/solat_engine/broker/ig/redaction.py](engine/solat_engine/broker/ig/redaction.py) `redact_sensitive()` before logging any request/response.
+- **Audit:** Trade, order, and fill events must be logged with ids and context (e.g. order_id, fill_id, symbol, side, quantity) for [docs/CONVENTIONS.md](docs/CONVENTIONS.md) run artefact layout (e.g. data/runs/{run_id}/logs/trades.log).
+
+## Anti-patterns
+
+- `logger.info(f"Request: {request}")` or similar with unredacted request/response.
+- `logger.debug(f"API key: {api_key}")` or any log of secret value.
+- Logging without context (e.g. "Order submitted" without order_id/symbol in extra).
+
+## Output
+
+When suggesting or reviewing logging code: provide **structured alternative** (logger.info + extra dict) and **redaction reminder** if the code touches request/response or credentials.

@@ -1,0 +1,103 @@
+---
+description: "SOLAT v3.1: always-on project context (architecture, repo layout, current phase)."
+alwaysApply: true
+globs: "**/*"
+---
+
+# SOLAT v3.1 — Project Context (Always On)
+
+You are working inside the SOLATv3.1 repository. Treat this as authoritative context for every answer, suggestion, edit, and implementation decision.
+
+## 1) What SOLAT is
+
+SOLAT is a personal trading terminal/platform built as:
+
+- **Desktop app:** Tauri v2 + React (`apps/desktop`)
+- **Local engine:** Python FastAPI sidecar (`engine/solat_engine`)
+- **Broker:** IG Markets
+- **Strategy pack:** "Elite 8"
+- **Backtest-first:** build deterministic backtesting and data integrity before live trading
+
+The UI must never talk to IG directly. Only the engine talks to IG. The UI talks only to the engine via HTTP + WebSocket on localhost.
+
+## 2) Architectural invariants (do not violate)
+
+1. **Demo-first:** anything execution-related must be DEMO by default and safely gated.
+2. **Localhost-only:** engine binds to 127.0.0.1; no public exposure.
+3. **Broker truth:** in live execution, IG is the source of truth; local state reconciles to broker state.
+4. **No secrets:** never commit credentials; never log tokens; always redact sensitive headers/fields.
+5. **Deterministic backtests:** no lookahead, no hidden randomness; same inputs produce same outputs.
+6. **Strategy/indicator computation in engine:** strategy and indicator logic runs in the engine only; the UI only renders returned series/markers.
+7. **Phase discipline:** do not build later-phase features prematurely. If a request belongs to a later phase, propose the correct next step and stop.
+
+## 3) Repository layout (where things live)
+
+**Root:**
+
+- `apps/desktop/` — Tauri + React UI
+- `engine/` — Python engine package + tests
+- `docs/` — architecture, roadmap, security, conventions
+- `docs/AGENTS/` — agent specs, inventory, author prompt
+- `BUILD_LOG.md` — reverse-chronological build log (ROADMAP & Phase Agent updates)
+- `scripts/` — dev launcher scripts
+
+**Engine (Python):**
+
+- `engine/solat_engine/api/` — FastAPI routers (health/config/ws, data, backtest, execution, market, chart)
+- `engine/solat_engine/broker/ig/` — IG REST client, models, rate limiter, redaction
+- `engine/solat_engine/catalog/` — instrument catalogue, seed list, store
+- `engine/solat_engine/data/` — Parquet store, aggregation, quality checks, IG history fetch
+- `engine/solat_engine/domain/` — Bar, Instrument, Signal, Order, Fill, Position
+- `engine/solat_engine/backtest/` — deterministic engine, broker_sim, portfolio, metrics, sweep
+- `engine/solat_engine/strategies/` — Elite 8 + indicators
+- `engine/solat_engine/execution/` — router, risk, reconciliation, kill switch, ledger
+- `engine/solat_engine/market_data/` — polling/streaming scaffolding, bar builder, publisher
+- `engine/solat_engine/runtime/` — event bus, artefacts, run_context, jobs
+
+**Desktop (React):**
+
+- `apps/desktop/src/components/` — UI components (StatusScreen, ExecutionPanel, chart components as added)
+- `apps/desktop/src/hooks/` — hooks (engine health, ws, execution status, etc.)
+- `apps/desktop/src/screens/` — full-screen views (e.g. TerminalScreen)
+- `apps/desktop/src/` — main App, styles
+
+## 4) Canonical docs (read before architectural changes)
+
+Use these as the source of truth when making or proposing changes:
+
+- `docs/ARCHITECTURE.md` — system design, data flows, WS event types
+- `docs/ROADMAP.md` — phases, deliverables, "what's next"
+- `docs/SECURITY.md` — secret handling, safety gating, demo/live constraints
+- `docs/CONVENTIONS.md` — coding standards, run artefacts layout, naming
+- `docs/AGENTS/AGENTS-INVENTORY.md` — list of Cursor agents and when to use them
+- `docs/AGENTS/AGENT-AUTHOR-PROMPT.md` — how to create new rules/skills
+
+If you change behaviour, routes, event schemas, or data formats, you must propose doc updates (or apply them if requested).
+
+## 5) Current phase state (keep aligned)
+
+As of the current build state:
+
+- **Completed:** Phase 001–006 (foundations, IG connectivity, data layer, backtest engine + Elite 8 runtime, demo execution + reconciliation + kill switch, market data backend + overlays/signals endpoints)
+- **In progress:** Terminal UI front-end (charting + overlays + markers) depending on the current task focus
+
+If asked "what's next?", anchor your answer to `docs/ROADMAP.md` and the last completed phase. Do not assume future phases are done.
+
+## 6) Working style constraints (how you should behave)
+
+- Prefer small, testable increments with explicit stop points.
+- Keep existing tests passing; do not break boot path.
+- Avoid introducing heavy dependencies unless clearly justified.
+- If adding an endpoint or WS event: keep it backward-compatible or include a migration note.
+- When uncertain about a file location: consult `docs/ARCHITECTURE.md` and map capability → module path.
+- This rule is contextual only: it does not produce code by itself. It constrains and guides all subsequent actions.
+
+## 7) Output expectations
+
+When generating plans or prompts:
+
+- Reference exact folders/files in this repo.
+- Specify what phase the work belongs to.
+- Include "stop point" criteria: what is verified working vs deferred.
+
+This rule is purely contextual; it should not produce code by itself. It exists to constrain all future actions.

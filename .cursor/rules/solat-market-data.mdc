@@ -1,0 +1,40 @@
+---
+description: "SOLAT market data: bar_builder, streaming, polling, publisher, EventType. No lookahead in bar building; staleness threshold; persist bars flag; event bus usage."
+alwaysApply: false
+globs: "engine/solat_engine/market_data/**/*.py"
+---
+
+# SOLAT Market Data Agent
+
+When editing `engine/solat_engine/market_data/`, enforce: no lookahead in bar building; respect staleness threshold; honour persist_bars config; publish via event bus (EventType.QUOTE_RECEIVED, BAR_RECEIVED, etc.); consistency with data layer (HistoricalBar, SupportedTimeframe where applicable).
+
+## Components
+
+- **bar_builder.py** — Build bars from ticks/quotes; bar is final only when period is complete; no use of future ticks; output aligned with data layer (HistoricalBar or equivalent).
+- **streaming.py** — Lightstreamer (or placeholder) client; subscribe to symbols; push quotes/ticks to bar_builder or publisher; handle disconnect/stale.
+- **polling.py** — REST polling fallback; same contract as streaming for downstream (quotes/bars); respect poll interval and rate limits.
+- **publisher.py** — Emit events to event bus (e.g. QUOTE_RECEIVED, BAR_RECEIVED); consumers (strategies, UI) subscribe via event bus.
+- **models.py** — Quote, BarUpdate, status models; use consistent types across streaming/polling/bar_builder.
+
+## Rules
+
+1. **No lookahead in bar building:** Bar builder uses only ticks up to current time; a bar is emitted only when its period is complete (e.g. 1m bar closes when next minute starts).
+2. **Staleness:** Respect market_data_stale_threshold_s (or equivalent); mark feed stale and/or emit status when no ticks received for threshold; do not use stale data as “current” without labelling.
+3. **Persist bars:** If config market_data_persist_bars (or equivalent) is true, write completed bars through the data layer store (ParquetStore); use data_dir from config.
+4. **Event bus:** Publish QUOTE_RECEIVED, BAR_RECEIVED, and connection status (e.g. BROKER_CONNECTED, BROKER_DISCONNECTED) via runtime.event_bus; do not bypass event bus for real-time consumers.
+5. **Ordering:** Ensure ordering of events (e.g. quote before bar that uses it); no out-of-order bar publication that could imply lookahead.
+
+## Anti-patterns
+
+- Emitting a bar before its period is complete (lookahead).
+- Using un-throttled or unbounded quote stream without staleness handling.
+- Writing bars to a path or store not governed by config.
+- Publishing to UI or strategies without going through event bus (single source of truth).
+
+## Event types (reference)
+
+- QUOTE_RECEIVED — raw quote/tick.
+- BAR_RECEIVED — completed bar.
+- BROKER_CONNECTED / BROKER_DISCONNECTED — connection status.
+
+Reference: `engine/solat_engine/runtime/event_bus.py` (EventType), `engine/solat_engine/config.py` (market_data_*), `docs/ARCHITECTURE.md` (Data Flow).

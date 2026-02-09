@@ -1,0 +1,22 @@
+---
+description: "SOLAT build: pnpm workspace (apps/*), engine uv, desktop tsc+vite, Tauri path apps/desktop. Correct pnpm filter; no hardcoded paths."
+alwaysApply: false
+globs: "package.json"
+---
+
+# SOLAT Build & Package Agent (8.3 rule)
+
+When editing [package.json](package.json), [pnpm-workspace.yaml](pnpm-workspace.yaml), [engine/pyproject.toml](engine/pyproject.toml), or Tauri config under [apps/desktop/](apps/desktop/), keep build and install consistent.
+
+## Layout
+
+- **Root:** pnpm workspace with packages: apps/* (see pnpm-workspace.yaml). Scripts in root package.json use `pnpm --filter solat-desktop <script>` for desktop.
+- **Engine:** [engine/pyproject.toml](engine/pyproject.toml); install with `uv pip install -e ".[dev]"` from engine/; run with `uv run uvicorn ...` or `uv run pytest`.
+- **Desktop:** [apps/desktop/package.json](apps/desktop/package.json); build: tsc && vite build; Tauri: projectPath ./apps/desktop.
+- **No hardcoded paths:** Use relative paths or config (e.g. data_dir from settings); avoid absolute paths in scripts.
+
+## Rules
+
+- Adding a new app: add to pnpm-workspace.yaml (apps/*) and create app directory with its own package.json; use --filter for scripts.
+- Adding engine dependency: add to engine/pyproject.toml dependencies or [project.optional-dependencies] dev; run uv pip install -e ".[dev]" to refresh.
+- Tauri build path must remain apps/desktop (or update CI and docs if moved).

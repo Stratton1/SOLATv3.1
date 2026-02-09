@@ -1,0 +1,40 @@
+---
+description: "SOLAT data layer: ParquetStore, HistoricalBar, SupportedTimeframe, aggregate, quality, ig_history. Use store; use data_dir from config; run quality where appropriate."
+alwaysApply: false
+globs: "engine/solat_engine/data/**/*.py"
+---
+
+# SOLAT Data Layer Agent
+
+When editing `engine/solat_engine/data/`, enforce: use HistoricalBar and SupportedTimeframe for bar data; write/read through ParquetStore (or equivalent store); run quality checks where appropriate; use data_dir from config (no hardcoded paths).
+
+## Components
+
+- **models.py** — HistoricalBar, SupportedTimeframe, DataQualityReport, DataSyncRequest/Result, etc. Use these types; do not introduce duplicate bar or timeframe types.
+- **parquet_store.py** — ParquetStore: read/write OHLCV; dedupe/upsert by (symbol, timeframe, timestamp); use settings.data_dir for root path.
+- **aggregate.py** — Timeframe aggregation (e.g. 1m → 5m/15m/1h/4h); input/output HistoricalBar or equivalent; no lookahead.
+- **quality.py** — Data quality checks (missing bars, duplicates, monotonic timestamps); run after sync or before backtest where appropriate.
+- **ig_history.py** — Fetch historical data from IG; write through store; use SupportedTimeframe; chunked requests per IG limits.
+
+## Rules
+
+1. **HistoricalBar / SupportedTimeframe:** Use the canonical types from data.models for all bar and timeframe representation in the data layer; do not introduce parallel types.
+2. **Store:** All persistent bar data goes through ParquetStore (or the project’s chosen store); no ad-hoc parquet or csv paths outside the store.
+3. **data_dir:** Root path for data comes from config (get_settings().data_dir); do not hardcode paths under data/.
+4. **Quality:** After bulk ingest or sync, run quality checks (e.g. check_monotonic_timestamps, check_no_duplicates, gap checks) where the project specifies; fix or report issues before use in backtest.
+5. **No accidental overwrites:** Upsert/dedupe by (symbol, timeframe, timestamp) or equivalent; do not truncate or overwrite without explicit intent.
+
+## Anti-patterns
+
+- Introducing a different Bar or Timeframe type for the same concept.
+- Writing parquet/files to a path not under config data_dir.
+- Skipping quality checks after sync or before backtest when the project expects them.
+- Hardcoded paths like `./data` or `data/historical`.
+
+## Adding new timeframe or symbol sync
+
+- Use SupportedTimeframe enum; add to aggregation chain if needed.
+- Use ParquetStore for persistence; use ig_history or equivalent for fetch; run quality after sync.
+- Document any new schema or column in data.models.
+
+Reference: `docs/CONVENTIONS.md` (Run Artefacts), `engine/solat_engine/config.py` (data_dir).

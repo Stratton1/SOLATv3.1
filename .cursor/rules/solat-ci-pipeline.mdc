@@ -1,0 +1,23 @@
+---
+description: "SOLAT CI: engine tests (uv, ruff, mypy, pytest), UI typecheck, Tauri build. Keep commands in sync with package.json and pyproject.toml."
+alwaysApply: false
+globs: ".github/workflows/ci.yml"
+---
+
+# SOLAT CI Pipeline Agent (8.1 rule)
+
+When editing [.github/workflows/ci.yml](.github/workflows/ci.yml), [package.json](package.json), or [engine/pyproject.toml](engine/pyproject.toml), ensure CI steps stay in sync with local commands.
+
+## Current CI jobs
+
+- **test-engine:** uv, Python 3.11, `uv pip install -e ".[dev]"` in engine/; ruff check; mypy solat_engine; pytest -v --tb=short.
+- **check-ui:** pnpm install; pnpm --filter solat-desktop typecheck (and optionally lint).
+- **build-tauri:** pnpm install; Tauri build from apps/desktop; matrix macos-latest (add windows/ubuntu when ready).
+
+## Rules
+
+- CI commands (ruff, mypy, pytest, typecheck, tauri build) must match what developers run locally (see package.json scripts and engine pyproject.toml).
+- Adding a new check: add step in CI and document in README or CONVENTIONS; keep working-directory and run commands consistent.
+- Matrix: Tauri build currently macos-latest; add windows-latest / ubuntu-latest when supported.
+
+Reference: [.github/workflows/ci.yml](.github/workflows/ci.yml), [package.json](package.json), [engine/pyproject.toml](engine/pyproject.toml).

@@ -1,0 +1,25 @@
+---
+description: "SOLAT metrics.json schema: run_id, strategy_id, symbol, timeframe, dates, capital, return_pct, drawdown, sharpe, trades, win_rate, profit_factor. Add new fields backward-compatibly."
+alwaysApply: false
+globs: "engine/solat_engine/backtest/metrics.py"
+---
+
+# SOLAT Metrics JSON Schema Agent (10.2)
+
+When editing backtest metrics export or [engine/solat_engine/backtest/metrics.py](engine/solat_engine/backtest/metrics.py) (or code that writes metrics.json), keep the metrics shape consistent with [docs/CONVENTIONS.md](docs/CONVENTIONS.md) so UI and analytics do not break.
+
+## Canonical fields (CONVENTIONS)
+
+- run_id, strategy_id, symbol, timeframe
+- start_date, end_date
+- initial_capital, final_capital
+- total_return_pct, max_drawdown_pct
+- sharpe_ratio (or similar)
+- total_trades, win_rate, profit_factor
+
+## Rules
+
+- **Add new fields:** Add in a backward-compatible way (optional fields or new keys); do not remove or rename existing keys without a migration note and doc update.
+- **Document:** If extending the schema, update CONVENTIONS (Metrics JSON Structure) and any UI types that consume metrics.json.
+
+Reference: [docs/CONVENTIONS.md](docs/CONVENTIONS.md) (Metrics JSON Structure).

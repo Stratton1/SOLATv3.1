@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # Python Engine Tests
+  test-engine:
+    name: Test Python Engine
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        working-directory: ./engine
+        run: uv pip install -e ".[dev]"
+
+      - name: Run linter (ruff)
+        working-directory: ./engine
+        run: uv run ruff check .
+
+      - name: Run type checker (mypy)
+        working-directory: ./engine
+        run: uv run mypy solat_engine --ignore-missing-imports
+
+      - name: Run tests
+        working-directory: ./engine
+        run: uv run pytest -v --tb=short
+
+  # UI Type Check and Lint
+  check-ui:
+    name: Check UI
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Type check
+        run: pnpm --filter solat-desktop typecheck
+
+  # Build Tauri App
+  build-tauri:
+    name: Build Tauri App
+    runs-on: ${{ matrix.platform }}
+    needs: [test-engine, check-ui]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest]
+        # Add windows-latest and ubuntu-latest when ready
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-action@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./apps/desktop/src-tauri -> target"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: ./apps/desktop

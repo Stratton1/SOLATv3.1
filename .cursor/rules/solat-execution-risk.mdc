@@ -1,0 +1,38 @@
+---
+description: "SOLAT execution: router, risk engine, kill switch, reconciliation. No bypass of risk; all orders via router; kill switch respected; no silent failure."
+alwaysApply: false
+globs: "engine/solat_engine/execution/**/*.py"
+---
+
+# SOLAT Execution & Risk Agent
+
+When editing `engine/solat_engine/execution/`, enforce: no bypass of risk checks; all orders go through the router; kill switch respected; no silent failure. Remind of config: REQUIRE_SL, CLOSE_ON_KILL_SWITCH, REQUIRE_ARM_CONFIRMATION.
+
+## Components and responsibilities
+
+- **router.py** — Signal → intent → order; all orders must flow through the router; no direct broker submission from strategies.
+- **risk_engine.py** — Hard gate: position size, concurrent positions, daily loss, trades/hour, per-symbol exposure; every intent must pass risk check before submission.
+- **kill_switch.py** — Emergency stop; when active, no new orders; optionally close all (CLOSE_ON_KILL_SWITCH); must be explicitly reset; no silent bypass.
+- **reconciliation.py** — Broker is source of truth; local state must reconcile to broker state; log mismatches.
+- **ledger.py** — Append-only audit log for intents, orders, fills; no deletion or alteration.
+
+## Checklist when changing execution code
+
+- [ ] **Risk gating:** No path that submits an order without going through RiskEngine (or equivalent gate).
+- [ ] **Kill switch:** Any submit path checks kill switch; when active, reject or defer; log when kill switch blocks.
+- [ ] **Router:** New order types or intents go through the router; no direct broker calls from outside execution/.
+- [ ] **Logging:** Intent, order, fill (and reject) are logged with ids and context; no silent failure (log before re-raise or return error).
+- [ ] **Config:** Honour REQUIRE_SL, CLOSE_ON_KILL_SWITCH, REQUIRE_ARM_CONFIRMATION from execution config.
+
+## Anti-patterns
+
+- **Bypass risk:** Submitting an order without risk check.
+- **Bypass kill switch:** Allowing orders when kill switch is active.
+- **Silent failure:** Catching and ignoring errors without logging.
+- **Broker calls outside router:** Strategy or other module calling broker directly.
+
+## Output
+
+When proposing changes: state **risk/kill-switch/reconciliation impact** and ensure the checklist above is satisfied. If adding a new order type or execution path, specify how it flows through router and risk engine.
+
+Reference: `docs/SECURITY.md`, execution config in `engine/solat_engine/config.py`.

@@ -1,0 +1,34 @@
+---
+description: "SOLAT domain models: Pydantic, Decimal for price/qty, frozen, UUID vs str IDs. Apply when editing domain/ or code that constructs Bar, Order, Fill, Position, Signal, Instrument."
+alwaysApply: false
+globs: "engine/solat_engine/domain/**/*.py"
+---
+
+# SOLAT Domain Model Agent (Engine)
+
+When editing `engine/solat_engine/domain/` or any code that creates/uses Bar, Order, Fill, Position, Signal, Instrument, apply these rules. Output corrected types and field types. Do not introduce new domain types without explicit need.
+
+## Types and structures
+
+- **Pydantic BaseModel** for all domain objects (Bar, Instrument, Signal, Order, Fill, Position).
+- **Decimal** for all price, quantity, and amount fields (never float for money).
+- **frozen = True** where the model is immutable (prefer for value objects).
+- **UUID** for internal IDs (e.g. order.id, fill.id); **str** for broker IDs (e.g. order.broker_order_id).
+- **datetime** with timezone (UTC) for timestamps.
+
+## Naming and enums
+
+- Use `str, Enum` for sides, statuses, types (e.g. OrderSide, OrderStatus, SignalDirection, Timeframe).
+- Field names: snake_case; no abbreviations unless project-standard (e.g. id, sl, tp only if documented).
+
+## Anti-patterns
+
+- **No float for money:** Use `Decimal`; never float for price, quantity, notional, or PnL.
+- **No mutable default:** Use `Field(default_factory=...)` for list/dict defaults.
+- **No new domain types without need:** Prefer extending existing models or adding optional fields; if a new type is required, add it to domain/ and export from domain/__init__.py.
+
+## When editing code outside domain/
+
+If you are editing code that constructs or passes Bar, Order, Fill, Position, Signal, or Instrument (e.g. in backtest/, execution/, api/), use the same types: Decimal for money, UUID for internal ids, str for broker ids. Import from `solat_engine.domain`.
+
+Reference: `docs/CONVENTIONS.md` (Domain Models).

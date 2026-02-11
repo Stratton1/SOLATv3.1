@@ -47,9 +47,9 @@ class WalkForwardConfig(BaseModel):
 
     # Window configuration
     window_type: WindowType = Field(default=WindowType.ROLLING)
-    in_sample_days: int = Field(default=90, ge=30, description="In-sample training period")
-    out_of_sample_days: int = Field(default=30, ge=7, description="Out-of-sample testing period")
-    step_days: int = Field(default=30, ge=1, description="Days to step forward each iteration")
+    in_sample_days: int = Field(default=180, ge=30, description="In-sample training period")
+    out_of_sample_days: int = Field(default=45, ge=7, description="Out-of-sample testing period")
+    step_days: int = Field(default=45, ge=1, description="Days to step forward each iteration")
 
     # Selection
     optimization_mode: OptimizationMode = Field(default=OptimizationMode.SHARPE)

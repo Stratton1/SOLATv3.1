@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class SizingMethod(str, Enum):
@@ -98,10 +98,23 @@ class BacktestRequest(BaseModel):
 
     symbols: list[str] = Field(..., min_length=1, description="Symbols to backtest")
     timeframe: str = Field(default="1m", description="Primary timeframe")
-    start: datetime = Field(..., description="Backtest start time (UTC)")
-    end: datetime = Field(..., description="Backtest end time (UTC)")
+    start: datetime = Field(
+        ...,
+        description="Backtest start time (UTC)",
+        validation_alias=AliasChoices("start", "start_date"),
+    )
+    end: datetime = Field(
+        ...,
+        description="Backtest end time (UTC)",
+        validation_alias=AliasChoices("end", "end_date"),
+    )
     bots: list[str] = Field(..., min_length=1, description="Bot names to run")
-    initial_cash: float = Field(default=100000.0, ge=1000.0, description="Starting capital")
+    initial_cash: float = Field(
+        default=100000.0,
+        ge=1000.0,
+        description="Starting capital",
+        validation_alias=AliasChoices("initial_cash", "initial_capital"),
+    )
     spread: SpreadConfig = Field(default_factory=SpreadConfig)
     slippage: SlippageConfig = Field(default_factory=SlippageConfig)
     fees: FeeConfig = Field(default_factory=FeeConfig)

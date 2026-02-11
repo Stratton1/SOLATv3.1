@@ -57,17 +57,21 @@ class WalkForwardEngine:
         # Active runs
         self._active_runs: dict[str, WalkForwardResult] = {}
 
-    async def run(self, config: WalkForwardConfig) -> WalkForwardResult:
+    async def run(
+        self, config: WalkForwardConfig, run_id: str | None = None
+    ) -> WalkForwardResult:
         """
         Run walk-forward optimization.
 
         Args:
             config: Walk-forward configuration
+            run_id: Optional pre-generated run ID (auto-generated if None)
 
         Returns:
             Complete walk-forward result with window-by-window analysis
         """
-        run_id = f"wf-{uuid.uuid4().hex[:8]}"
+        if run_id is None:
+            run_id = f"wf-{uuid.uuid4().hex[:8]}"
 
         result = WalkForwardResult(
             run_id=run_id,
@@ -161,6 +165,9 @@ class WalkForwardEngine:
             # Aggregate results
             result = self._aggregate_results(result, all_oos_performances, config)
 
+            # Write artefacts (folds.parquet, scorecard.parquet)
+            self._write_artefacts(result, all_oos_performances)
+
             result.status = "completed"
             result.completed_at = datetime.now(UTC)
             result.message = f"Completed {len(windows)} windows, {len(result.recommended_combos)} combos recommended"
@@ -194,25 +201,30 @@ class WalkForwardEngine:
             result.completed_at = datetime.now(UTC)
             return result
 
+    @staticmethod
     def _generate_windows(
-        self, config: WalkForwardConfig
+        config: WalkForwardConfig,
     ) -> list[tuple[datetime, datetime, datetime, datetime]]:
         """
         Generate walk-forward windows.
 
         Returns list of (in_sample_start, in_sample_end, oos_start, oos_end) tuples.
+
+        ROLLING: IS window slides forward by step_days each iteration.
+        ANCHORED: IS always starts at anchor (start_date), IS end grows by step_days.
         """
-        windows = []
+        _MAX_ITERATIONS = 10_000
+        windows: list[tuple[datetime, datetime, datetime, datetime]] = []
         current_start = config.start_date
 
-        while True:
+        for _ in range(_MAX_ITERATIONS):
             # In-sample period
             if config.window_type == WindowType.ANCHORED:
                 is_start = config.start_date  # Always from anchor
+                is_end = current_start + timedelta(days=config.in_sample_days)
             else:
                 is_start = current_start
-
-            is_end = is_start + timedelta(days=config.in_sample_days)
+                is_end = is_start + timedelta(days=config.in_sample_days)
 
             # Out-of-sample period
             oos_start = is_end
@@ -224,12 +236,13 @@ class WalkForwardEngine:
 
             windows.append((is_start, is_end, oos_start, oos_end))
 
-            # Step forward
+            # Step forward — both modes advance current_start uniformly
             current_start += timedelta(days=config.step_days)
-
-            # For anchored, we only step the OOS window
-            if config.window_type == WindowType.ANCHORED:
-                current_start = is_end
+        else:
+            raise RuntimeError(
+                f"Walk-forward window generation exceeded {_MAX_ITERATIONS} iterations. "
+                f"Check step_days ({config.step_days}) and date range."
+            )
 
         return windows
 
@@ -496,6 +509,10 @@ class WalkForwardEngine:
             sharpe_values = [p.sharpe for p in perfs]
             sharpe_std = (sum((s - avg_sharpe) ** 2 for s in sharpe_values) / len(sharpe_values)) ** 0.5
 
+            # Stability metrics
+            sharpe_cv = sharpe_std / max(abs(avg_sharpe), 0.01)
+            folds_profitable_pct = sum(1 for p in perfs if p.sharpe > 0) / len(perfs)
+
             parts = combo_id.split(":")
             combo_averages.append({
                 "combo_id": combo_id,
@@ -508,6 +525,8 @@ class WalkForwardEngine:
                 "total_trades": total_trades,
                 "avg_drawdown_pct": avg_drawdown,
                 "sharpe_std": sharpe_std,
+                "sharpe_cv": sharpe_cv,
+                "folds_profitable_pct": folds_profitable_pct,
                 "windows_count": len(perfs),
                 "consistency_score": avg_sharpe / max(sharpe_std, 0.1),  # Higher = more consistent
             })
@@ -526,6 +545,76 @@ class WalkForwardEngine:
             result.aggregate_trades = sum(p.total_trades for p in all_oos_performances)
 
         return result
+
+    def _write_artefacts(
+        self,
+        result: WalkForwardResult,
+        all_oos_performances: list[ComboPerformance],
+    ) -> None:
+        """Write folds.parquet and scorecard.parquet artefacts."""
+        import pandas as pd
+
+        run_dir = self.artefacts_dir / result.run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        # folds.parquet — one row per window x combo with IS+OOS metrics
+        fold_rows = []
+        for window in result.windows:
+            for item in window.in_sample_top:
+                fold_rows.append({
+                    "window_id": window.window_id,
+                    "is_start": window.in_sample_start.isoformat(),
+                    "is_end": window.in_sample_end.isoformat(),
+                    "oos_start": window.out_of_sample_start.isoformat(),
+                    "oos_end": window.out_of_sample_end.isoformat(),
+                    "period": "IS",
+                    "symbol": item.get("symbol", ""),
+                    "bot": item.get("bot", ""),
+                    "timeframe": item.get("timeframe", ""),
+                    "sharpe": item.get("sharpe", 0),
+                    "sortino": item.get("sortino", 0),
+                    "win_rate": item.get("win_rate", 0),
+                    "profit_factor": item.get("profit_factor", 0),
+                    "total_return_pct": item.get("total_return_pct", 0),
+                    "max_drawdown_pct": item.get("max_drawdown_pct", 0),
+                    "total_trades": item.get("total_trades", 0),
+                })
+            for item in window.out_of_sample_results:
+                fold_rows.append({
+                    "window_id": window.window_id,
+                    "is_start": window.in_sample_start.isoformat(),
+                    "is_end": window.in_sample_end.isoformat(),
+                    "oos_start": window.out_of_sample_start.isoformat(),
+                    "oos_end": window.out_of_sample_end.isoformat(),
+                    "period": "OOS",
+                    "symbol": item.get("symbol", ""),
+                    "bot": item.get("bot", ""),
+                    "timeframe": item.get("timeframe", ""),
+                    "sharpe": item.get("sharpe", 0),
+                    "sortino": item.get("sortino", 0),
+                    "win_rate": item.get("win_rate", 0),
+                    "profit_factor": item.get("profit_factor", 0),
+                    "total_return_pct": item.get("total_return_pct", 0),
+                    "max_drawdown_pct": item.get("max_drawdown_pct", 0),
+                    "total_trades": item.get("total_trades", 0),
+                })
+
+        if fold_rows:
+            try:
+                pd.DataFrame(fold_rows).to_parquet(run_dir / "folds.parquet", index=False)
+            except Exception as e:
+                logger.warning("Failed to write folds.parquet: %s", e)
+
+        # scorecard.parquet — recommended combos
+        if result.recommended_combos:
+            try:
+                pd.DataFrame(result.recommended_combos).to_parquet(
+                    run_dir / "scorecard.parquet", index=False
+                )
+            except Exception as e:
+                logger.warning("Failed to write scorecard.parquet: %s", e)
+
+        logger.debug("Wrote artefacts to %s", run_dir)
 
     def _perf_to_dict(self, perf: ComboPerformance) -> dict[str, Any]:
         """Convert ComboPerformance to dict for serialization."""

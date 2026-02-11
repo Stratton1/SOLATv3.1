@@ -298,6 +298,34 @@ class AllowlistManager:
             "config": self.config.model_dump(),
         }
 
+    def get_grouped(self) -> list[dict[str, Any]]:
+        """
+        Get allowlist entries grouped by symbol.
+
+        Returns a list of groups, each containing:
+        - symbol: the symbol name
+        - bots: list of {bot, timeframe, enabled, sharpe, ...} entries
+        """
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for entry in self._entries.values():
+            if entry.symbol not in groups:
+                groups[entry.symbol] = []
+            groups[entry.symbol].append({
+                "bot": entry.bot,
+                "timeframe": entry.timeframe,
+                "enabled": entry.enabled,
+                "sharpe": entry.sharpe,
+                "win_rate": entry.win_rate,
+                "total_trades": entry.total_trades,
+                "combo_id": entry.combo_id,
+                "validated_at": entry.validated_at.isoformat() if entry.validated_at else None,
+            })
+
+        return [
+            {"symbol": symbol, "bots": bots}
+            for symbol, bots in sorted(groups.items())
+        ]
+
     def clear(self) -> None:
         """Clear all entries."""
         self._entries = {}

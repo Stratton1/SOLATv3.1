@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useExecutionStatus } from "../hooks/useExecutionStatus";
 import { useExecutionMode } from "../hooks/useExecutionMode";
+import { useToast } from "../context/ToastContext";
 import { InfoTip } from "./InfoTip";
 
 interface ExecutionPanelProps {
@@ -24,131 +25,121 @@ export function ExecutionPanel({ igConfigured }: ExecutionPanelProps) {
     setSignalsEnabled,
     setDemoArmEnabled,
   } = useExecutionMode();
+  const { showToast } = useToast();
 
-  const [actionError, setActionError] = useState<string | null>(null);
   const [isActioning, setIsActioning] = useState(false);
 
   const handleConnect = async () => {
-    setActionError(null);
     setIsActioning(true);
-    const result = await connect();
-    if (!result.ok) {
-      setActionError(result.error || "Connection failed");
+    try {
+      const result = await connect();
+      if (result.ok) {
+        showToast("Connected to IG successfully", "success");
+      } else {
+        showToast(result.error || "Connection failed", "error");
+      }
+    } finally {
+      setIsActioning(false);
     }
-    setIsActioning(false);
   };
 
   const handleDisconnect = async () => {
-    setActionError(null);
     setIsActioning(true);
-    await disconnect();
-    setIsActioning(false);
+    try {
+      await disconnect();
+      showToast("Disconnected from IG", "info");
+    } finally {
+      setIsActioning(false);
+    }
   };
 
   const handleArm = async () => {
-    setActionError(null);
     setIsActioning(true);
-    const result = await arm(true);
-    if (!result.ok) {
-      setActionError(result.error || "Arm failed");
+    try {
+      const result = await arm(true);
+      if (result.ok) {
+        showToast("Execution engine ARMED", "success");
+      } else {
+        showToast(result.error || "Arming failed", "error");
+      }
+    } finally {
+      setIsActioning(false);
     }
-    setIsActioning(false);
   };
 
   const handleDisarm = async () => {
-    setActionError(null);
     setIsActioning(true);
-    await disarm();
-    setIsActioning(false);
+    try {
+      await disarm();
+      showToast("Execution engine DISARMED", "info");
+    } finally {
+      setIsActioning(false);
+    }
   };
 
   const handleKillSwitch = async () => {
-    setActionError(null);
     setIsActioning(true);
-    await activateKillSwitch("manual");
-    setIsActioning(false);
+    try {
+      await activateKillSwitch("manual");
+      showToast("KILL SWITCH ACTIVATED", "error");
+    } finally {
+      setIsActioning(false);
+    }
   };
 
   const handleResetKillSwitch = async () => {
-    setActionError(null);
     setIsActioning(true);
-    await resetKillSwitch();
-    setIsActioning(false);
+    try {
+      await resetKillSwitch();
+      showToast("Kill switch reset", "info");
+    } finally {
+      setIsActioning(false);
+    }
   };
 
   if (isLoading || !status) {
-    return (
-      <div className="execution-panel">
-        <h3 className="panel-title">Live Execution</h3>
-        <div className="panel-loading">Loading...</div>
-      </div>
-    );
+    return <div className="skeleton" style={{ height: 200 }} />;
   }
 
   if (error) {
-    return (
-      <div className="execution-panel">
-        <h3 className="panel-title">Live Execution</h3>
-        <div className="panel-error">{error}</div>
-      </div>
-    );
+    return <div className="panel-error">{error}</div>;
   }
 
   return (
-    <div className="execution-panel">
-      <h3 className="panel-title">Live Execution</h3>
-
-      {/* Status Indicators */}
-      <div className="execution-status-grid">
-        <div className="execution-indicator">
-          <span className="indicator-label">Mode</span>
-          <span className={`indicator-value mode-${status.mode.toLowerCase()}`}>
-            {status.mode}
-          </span>
+    <div className="execution-panel-dense">
+      {/* Metrics Row */}
+      <div className="autopilot-metrics" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 12 }}>
+        <div className="autopilot-metric">
+          <span className="autopilot-metric-value num tabular-nums" style={{ fontSize: 16 }}>{status.open_position_count}</span>
+          <span className="autopilot-metric-label">Open Positions</span>
         </div>
-        <div className="execution-indicator">
-          <span className="indicator-label">Connected</span>
+        <div className="autopilot-metric">
+          <span className={`autopilot-metric-value num tabular-nums ${status.realized_pnl_today >= 0 ? "text-green" : "text-red"}`} style={{ fontSize: 16 }}>
+            {status.realized_pnl_today.toFixed(2)}
+          </span>
+          <span className="autopilot-metric-label">PnL Today</span>
+        </div>
+      </div>
+
+      {/* Connectivity/Mode Indicators */}
+      <div className="dense-grid" style={{ marginBottom: 12 }}>
+        <div className="dense-row">
+          <span className="dense-label">Connected</span>
           <span className={`indicator-dot ${status.connected ? "connected" : ""}`} />
         </div>
-        <div className="execution-indicator">
-          <span className="indicator-label">Armed</span>
+        <div className="dense-row">
+          <span className="dense-label">Armed</span>
           <span className={`indicator-dot ${status.armed ? "armed" : ""}`} />
         </div>
-        <div className="execution-indicator">
-          <span className="indicator-label">Kill Switch</span>
+        <div className="dense-row">
+          <span className="dense-label">Kill Switch</span>
           <span className={`indicator-dot ${status.kill_switch_active ? "kill-active" : ""}`} />
         </div>
       </div>
 
-      {/* Position Count */}
-      <div className="execution-positions">
-        <div className="position-count">
-          <span className="count-value">{status.open_position_count}</span>
-          <span className="count-label">Open Positions</span>
-        </div>
-        {status.account_balance !== null && (
-          <div className="account-balance">
-            <span className="balance-value">
-              {status.account_balance.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
-            </span>
-            <span className="balance-label">Balance</span>
-          </div>
-        )}
-        <div className="pnl-today">
-          <span className={`pnl-value ${status.realized_pnl_today >= 0 ? "positive" : "negative"}`}>
-            {status.realized_pnl_today >= 0 ? "+" : ""}
-            {status.realized_pnl_today.toFixed(2)}
-          </span>
-          <span className="pnl-label">PnL Today</span>
-        </div>
-      </div>
-
-      {/* Mode Flags */}
+      {/* Control Flags */}
       {modeFlags && (
-        <div className="execution-mode-flags">
+        <div className="execution-mode-flags" style={{ marginBottom: 12 }}>
           <div className="mode-flag">
             <label className="mode-flag-label">
               <input
@@ -156,8 +147,8 @@ export function ExecutionPanel({ igConfigured }: ExecutionPanelProps) {
                 checked={modeFlags.signals_enabled}
                 onChange={(e) => setSignalsEnabled(e.target.checked)}
               />
-              <span>Signals Enabled</span>
-              <InfoTip text="When enabled, strategies generate signals on incoming bars. Disable to pause signal generation without disconnecting." />
+              <span style={{ fontSize: 11 }}>Signals Enabled</span>
+              <InfoTip text="When enabled, strategies generate signals on incoming bars." />
             </label>
           </div>
           <div className="mode-flag">
@@ -168,94 +159,82 @@ export function ExecutionPanel({ igConfigured }: ExecutionPanelProps) {
                 onChange={(e) => setDemoArmEnabled(e.target.checked)}
                 disabled={modeFlags.mode !== "DEMO"}
               />
-              <span>DEMO Arm</span>
-              <InfoTip text="Enable DEMO arm to allow run-once orders and autopilot execution in DEMO mode. This is required before arming or sending manual orders." />
+              <span style={{ fontSize: 11 }}>DEMO Arm</span>
+              <InfoTip text="Allow orders in DEMO mode. Required for autopilot execution." />
             </label>
-            {modeFlags.mode !== "DEMO" && (
-              <span className="mode-flag-note">DEMO mode only</span>
-            )}
           </div>
         </div>
       )}
 
-      {/* Error Display */}
-      {(actionError || status.last_error) && (
-        <div className="execution-error">
-          {actionError || status.last_error}
-        </div>
-      )}
-
       {/* Control Buttons */}
-      <div className="execution-controls">
+      <div className="execution-controls" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         {!status.connected ? (
           <button
-            className="exec-btn connect-btn"
+            className="wizard-btn primary"
+            style={{ gridColumn: "span 2" }}
             onClick={handleConnect}
             disabled={isActioning || !igConfigured}
-            title={!igConfigured ? "IG credentials not configured" : "Connect to IG"}
           >
-            {isActioning ? "Connecting..." : "Connect"}
+            {isActioning ? "CONNECTING..." : "CONNECT TO BROKER"}
           </button>
         ) : (
-          <button
-            className="exec-btn disconnect-btn"
-            onClick={handleDisconnect}
-            disabled={isActioning}
-          >
-            {isActioning ? "..." : "Disconnect"}
-          </button>
-        )}
-
-        {status.connected && !status.kill_switch_active && (
           <>
+            <button
+              className="wizard-btn"
+              onClick={handleDisconnect}
+              disabled={isActioning}
+            >
+              DISCONNECT
+            </button>
+            
             {!status.armed ? (
               <button
-                className="exec-btn arm-btn"
+                className="wizard-btn primary"
                 onClick={handleArm}
-                disabled={isActioning}
+                disabled={isActioning || status.kill_switch_active}
               >
-                {isActioning ? "..." : "ARM"}
+                ARM ENGINE
               </button>
             ) : (
               <button
-                className="exec-btn disarm-btn"
+                className="wizard-btn"
                 onClick={handleDisarm}
                 disabled={isActioning}
               >
-                {isActioning ? "..." : "DISARM"}
+                DISARM
               </button>
             )}
           </>
         )}
 
         {status.connected && (
-          <>
+          <div style={{ gridColumn: "span 2", marginTop: 4 }}>
             {!status.kill_switch_active ? (
               <button
-                className="exec-btn kill-btn"
+                className="wizard-btn danger"
+                style={{ width: "100%", background: "var(--accent-red)", color: "white", border: "none" }}
                 onClick={handleKillSwitch}
                 disabled={isActioning}
-                title="Emergency stop - disarms and blocks all trading"
               >
-                KILL
+                KILL TRADING
               </button>
             ) : (
               <button
-                className="exec-btn reset-kill-btn"
+                className="wizard-btn primary"
+                style={{ width: "100%" }}
                 onClick={handleResetKillSwitch}
                 disabled={isActioning}
               >
-                Reset Kill Switch
+                RESET KILL SWITCH
               </button>
             )}
-          </>
+          </div>
         )}
       </div>
 
-      {/* Kill Switch Warning */}
-      {status.kill_switch_active && (
-        <div className="kill-switch-warning">
-          KILL SWITCH ACTIVE - Trading Halted
+      {!igConfigured && !status.connected && (
+        <div style={{ fontSize: 10, color: "var(--accent-yellow)", marginTop: 8, textAlign: "center" }}>
+          IG credentials not configured in .env
         </div>
       )}
     </div>

@@ -1,19 +1,16 @@
 /**
  * DEMO Test Checklist — 5-step setup guide for DEMO trading.
- *
- * Steps:
- * 1. Connect IG DEMO
- * 2. Enable Signals
- * 3. Set Allowlist
- * 4. Arm DEMO
- * 5. Run Once
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { useExecutionStatus } from "../hooks/useExecutionStatus";
 import { useExecutionMode } from "../hooks/useExecutionMode";
 import { engineClient } from "../lib/engineClient";
-import { InfoTip } from "./InfoTip";
+import { useToast } from "../context/ToastContext";
+
+interface DemoChecklistProps {
+  onScrollToConnect?: () => void;
+}
 
 interface ChecklistStep {
   label: string;
@@ -29,9 +26,10 @@ interface RunOnceResult {
   error?: string;
 }
 
-export function DemoChecklist() {
+export function DemoChecklist({ onScrollToConnect }: DemoChecklistProps) {
   const { status: execStatus } = useExecutionStatus();
   const { mode: execMode } = useExecutionMode();
+  const { showToast } = useToast();
   const [allowlistCount, setAllowlistCount] = useState<number | null>(null);
   const [runOnceResult, setRunOnceResult] = useState<RunOnceResult | null>(null);
   const [runOnceLoading, setRunOnceLoading] = useState(false);
@@ -63,41 +61,45 @@ export function DemoChecklist() {
         size: 0.1,
       });
       setRunOnceResult(result);
+      if (result.ok) {
+        showToast("Test order sent successfully", "success");
+      } else {
+        showToast(result.error || "Run Once failed", "error");
+      }
     } catch (err) {
-      setRunOnceResult({
-        ok: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-      });
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setRunOnceResult({ ok: false, error: msg });
+      showToast(msg, "error");
     } finally {
       setRunOnceLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   const steps: ChecklistStep[] = [
     {
-      label: "1. Connect IG DEMO",
-      description: "Connect to your IG DEMO account via Execution Control.",
+      label: "Connect IG DEMO",
+      description: "Open a broker session via Execution Control.",
       status: execStatus?.connected ? "done" : "pending",
     },
     {
-      label: "2. Enable Signals",
-      description: "Turn on signal generation in the execution engine.",
+      label: "Enable Signals",
+      description: "Toggle 'Signals Enabled' in Execution Control.",
       status: execMode?.signals_enabled ? "done" : "pending",
     },
     {
-      label: "3. Set Allowlist",
-      description: "Add at least one bot/symbol combo to the allowlist.",
+      label: "Set Allowlist",
+      description: "Add bot/symbol combos via the Optimise tab.",
       status:
         allowlistCount !== null && allowlistCount > 0 ? "done" : "pending",
     },
     {
-      label: "4. Arm DEMO",
-      description: "Arm the execution engine for DEMO order routing.",
+      label: "Arm DEMO",
+      description: "Check 'DEMO Arm' then click ARM.",
       status: execStatus?.armed ? "done" : "pending",
     },
     {
-      label: "5. Run Once",
-      description: "Send a test order through the full execution pipeline.",
+      label: "Run Once",
+      description: "Send a test order through the pipeline.",
       status: runOnceDone ? "done" : stepsReady ? "manual" : "pending",
     },
   ];
@@ -105,56 +107,53 @@ export function DemoChecklist() {
   const completedCount = steps.filter((s) => s.status === "done").length;
 
   return (
-    <div className="demo-checklist">
-      <div className="card-header">
-        <span className="card-title">
-          DEMO Setup
-          <InfoTip text="Complete these steps to run your first DEMO trade. Steps 1-4 are auto-checked. Step 5 sends a test order." />
-        </span>
-        <span className="card-badge demo">
-          {completedCount}/5 complete
-        </span>
+    <div className="demo-checklist-dense">
+      <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 8, textAlign: "right" }}>
+        {completedCount}/5 COMPLETE
       </div>
-      <ul className="checklist-steps">
+      <ul className="checklist-steps-dense">
         {steps.map((step, idx) => (
           <li
             key={step.label}
-            className={`checklist-step ${step.status}`}
+            className={`checklist-step-dense ${step.status}`}
           >
-            <span className="checklist-icon">
-              {step.status === "done"
-                ? "\u2713"
-                : step.status === "manual"
-                  ? "\u25CF"
-                  : "\u25CB"}
-            </span>
+            <div className="checklist-dot" />
             <div className="checklist-content">
-              <span className="checklist-label">{step.label}</span>
+              <div className="checklist-header-row">
+                <span className="checklist-label">{step.label}</span>
+                {step.status === "done" && <span className="checklist-check">✓</span>}
+              </div>
               <span className="checklist-desc">{step.description}</span>
-              {idx === 4 && stepsReady && !runOnceDone && (
-                <button
-                  className="btn btn-sm btn-accent"
-                  onClick={handleRunOnce}
-                  disabled={runOnceLoading}
-                  style={{ marginTop: 4 }}
-                >
-                  {runOnceLoading ? "Sending..." : "Run Once"}
-                </button>
-              )}
+              
+              {/* Contextual Actions */}
+              <div className="checklist-actions" style={{ marginTop: 4 }}>
+                {idx === 0 && step.status === "pending" && onScrollToConnect && (
+                  <button className="btn-inline" onClick={onScrollToConnect}>Go to Connect</button>
+                )}
+                {idx === 1 && step.status === "pending" && onScrollToConnect && (
+                  <button className="btn-inline" onClick={onScrollToConnect}>Go to Execution Control</button>
+                )}
+                {idx === 2 && step.status === "pending" && (
+                  <span className="checklist-hint">Configure in the Optimise tab</span>
+                )}
+                {idx === 3 && step.status === "pending" && execStatus?.connected && onScrollToConnect && (
+                  <button className="btn-inline" onClick={onScrollToConnect}>Go to Execution Control</button>
+                )}
+                {idx === 4 && stepsReady && !runOnceDone && (
+                  <button
+                    className="wizard-btn primary sm"
+                    onClick={handleRunOnce}
+                    disabled={runOnceLoading}
+                    style={{ fontSize: 10, padding: "2px 8px" }}
+                  >
+                    {runOnceLoading ? "Sending..." : "Trigger Run Once"}
+                  </button>
+                )}
+              </div>
+
               {idx === 4 && runOnceResult && (
-                <div
-                  className={`checklist-result ${runOnceResult.ok ? "success" : "error"}`}
-                  style={{ marginTop: 4, fontSize: "0.85em" }}
-                >
-                  {runOnceResult.ok ? (
-                    <span>
-                      {runOnceResult.status} | deal: {runOnceResult.deal_id ?? "n/a"}
-                    </span>
-                  ) : (
-                    <span className="text-error">
-                      {runOnceResult.error ?? "Failed"}
-                    </span>
-                  )}
+                <div className={`checklist-result ${runOnceResult.ok ? "text-green" : "text-red"}`} style={{ fontSize: 9, marginTop: 2 }}>
+                  {runOnceResult.ok ? `SUCCESS: ${runOnceResult.status}` : `ERROR: ${runOnceResult.error}`}
                 </div>
               )}
             </div>

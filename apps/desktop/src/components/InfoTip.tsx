@@ -1,7 +1,7 @@
 /**
  * Reusable info tooltip component.
  *
- * Small "i" icon that shows an explanation on hover/click.
+ * Small "i" icon that shows an explanation on hover/click/focus.
  * Used throughout the UI to provide contextual help.
  */
 
@@ -32,11 +32,20 @@ export function InfoTip({ text, position = "top" }: InfoTipProps) {
   return (
     <div className="infotip-wrapper" ref={ref}>
       <button
-        className="infotip-trigger"
-        onClick={() => setVisible((v) => !v)}
+        className={`infotip-trigger ${visible ? "active" : ""}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setVisible((v) => !v);
+        }}
         onMouseEnter={() => setVisible(true)}
         onMouseLeave={() => setVisible(false)}
+        onFocus={() => setVisible(true)}
+        onBlur={() => setVisible(false)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setVisible(false);
+        }}
         aria-label="More information"
+        aria-expanded={visible}
       >
         i
       </button>

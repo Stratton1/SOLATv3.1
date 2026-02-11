@@ -24,7 +24,7 @@ from solat_engine.config import Settings, get_settings_dep
 from solat_engine.data.parquet_store import ParquetStore
 from solat_engine.logging import get_logger
 from solat_engine.runtime.event_bus import Event, EventType, get_event_bus
-from solat_engine.strategies.elite8 import get_available_bots
+from solat_engine.strategies.elite8_hardened import get_available_bots
 
 router = APIRouter(prefix="/backtest", tags=["Backtest"])
 logger = get_logger(__name__)
@@ -77,9 +77,16 @@ async def _run_backtest_job(
         "timeframe": request.timeframe,
     })
 
-    # Run engine (sync, but wrapped in executor for non-blocking)
+    # Capture event loop for thread-safe progress callbacks from executor.
+    # engine.run() is synchronous and executes in a thread-pool worker,
+    # so we must marshal progress events back to the event-loop thread.
+    loop = asyncio.get_running_loop()
+
     def sync_progress(data: dict[str, Any]) -> None:
-        asyncio.create_task(progress_callback(data))
+        try:
+            loop.call_soon_threadsafe(loop.create_task, progress_callback(data))
+        except RuntimeError:
+            pass  # loop closed or shutting down — progress is best-effort
 
     engine = BacktestEngineV1(
         parquet_store=store,
@@ -88,8 +95,17 @@ async def _run_backtest_job(
     )
 
     # Run in executor to not block event loop
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, engine.run, request)
+    try:
+        result = await loop.run_in_executor(None, engine.run, request)
+    except Exception as exc:
+        logger.error("Backtest %s failed: %s", run_id, exc, exc_info=True)
+        await _emit_backtest_event(EventType.BACKTEST_COMPLETED, {
+            "run_id": run_id,
+            "ok": False,
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+        })
+        raise
 
     # Store result
     _job_results[run_id] = result
@@ -120,8 +136,13 @@ async def _run_sweep_job(
             **data,
         })
 
+    loop = asyncio.get_running_loop()
+
     def sync_progress(data: dict[str, Any]) -> None:
-        asyncio.create_task(progress_callback(data))
+        try:
+            loop.call_soon_threadsafe(loop.create_task, progress_callback(data))
+        except RuntimeError:
+            pass  # loop closed or shutting down — progress is best-effort
 
     sweep = GrandSweep(
         parquet_store=store,
@@ -130,8 +151,11 @@ async def _run_sweep_job(
     )
 
     # Run in executor
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, sweep.run, request)
+    try:
+        result = await loop.run_in_executor(None, sweep.run, request)
+    except Exception as exc:
+        logger.error("Sweep %s failed: %s", sweep_id, exc, exc_info=True)
+        raise
 
     # Store result
     _sweep_results[sweep_id] = result
@@ -159,6 +183,8 @@ class StatusResponse(BaseModel):
     status: str = Field(description="queued|running|done|failed")
     progress: float = Field(default=0.0, description="Progress 0-100")
     message: str = ""
+    error_type: str | None = Field(default=None, description="Exception class name on failure")
+    error_message: str | None = Field(default=None, description="Full error message on failure")
 
 
 class ResultsResponse(BaseModel):
@@ -216,6 +242,8 @@ class SweepStatusResponse(BaseModel):
     completed_combos: int = 0
     total_combos: int = 0
     message: str = ""
+    error_type: str | None = Field(default=None, description="Exception class name on failure")
+    error_message: str | None = Field(default=None, description="Full error message on failure")
 
 
 class SweepResultsResponse(BaseModel):
@@ -258,7 +286,7 @@ class RunsListResponse(BaseModel):
 @router.get("/bots", response_model=BotsResponse)
 async def list_bots() -> BotsResponse:
     """List available strategy bots."""
-    from solat_engine.strategies.elite8 import Elite8StrategyFactory
+    from solat_engine.strategies.elite8_hardened import Elite8StrategyFactory
 
     bot_info = Elite8StrategyFactory.get_bot_info()
     return BotsResponse(bots=bot_info)
@@ -276,13 +304,14 @@ async def list_runs() -> RunsListResponse:
     # Add completed runs
     for run_id, result in _job_results.items():
         metrics = result.combined_metrics
+        request = result.request
         summary = RunSummary(
             run_id=run_id,
             status="done" if result.ok else "failed",
-            started_at=result.started_at if hasattr(result, "started_at") else None,
-            symbols=result.symbols if hasattr(result, "symbols") else [],
-            bots=result.bots if hasattr(result, "bots") else [],
-            timeframe=result.timeframe if hasattr(result, "timeframe") else "",
+            started_at=result.started_at.isoformat() if result.started_at else None,
+            symbols=request.symbols,
+            bots=request.bots,
+            timeframe=request.timeframe,
             trades_count=metrics.total_trades if metrics else 0,
             sharpe=metrics.sharpe_ratio if metrics else None,
             total_return=metrics.total_return if metrics else None,
@@ -378,6 +407,8 @@ async def get_status(run_id: str = Query(..., description="Backtest run ID")) ->
                     status="failed",
                     progress=0.0,
                     message=str(e),
+                    error_type=type(e).__name__,
+                    error_message=str(e),
                 )
 
         return StatusResponse(
@@ -402,6 +433,8 @@ async def get_results(run_id: str = Query(..., description="Backtest run ID")) -
                 _job_results[run_id] = result
                 del _active_jobs[run_id]
             except Exception as e:
+                # Task failed permanently; remove it so callers don't get stuck in repeated 500s.
+                del _active_jobs[run_id]
                 raise HTTPException(status_code=500, detail=str(e))
 
     if run_id not in _job_results:
@@ -637,6 +670,8 @@ async def get_sweep_status(
                     sweep_id=sweep_id,
                     status="failed",
                     message=str(e),
+                    error_type=type(e).__name__,
+                    error_message=str(e),
                 )
 
         return SweepStatusResponse(

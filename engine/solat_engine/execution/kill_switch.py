@@ -8,6 +8,7 @@ When activated:
 """
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 from solat_engine.execution.models import ExecutionConfig, PositionView
 from solat_engine.logging import get_logger
@@ -172,3 +173,64 @@ class KillSwitch:
     def update_config(self, config: ExecutionConfig) -> None:
         """Update configuration."""
         self._config = config
+
+    def save_state(self, state_file: Path) -> None:
+        """
+        Persist kill switch state to disk.
+
+        Args:
+            state_file: Path to state file (JSON)
+        """
+        import json
+
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+
+        state = {
+            "active": self._active,
+            "reason": self._activation_reason,
+            "activated_at": self._activated_at.isoformat() if self._activated_at else None,
+            "activated_by": self._activated_by,
+        }
+
+        with open(state_file, "w") as f:
+            json.dump(state, f, indent=2)
+
+        logger.debug("Kill switch state saved to %s", state_file)
+
+    def restore_state(self, state_file: Path) -> None:
+        """
+        Restore kill switch state from disk.
+
+        Args:
+            state_file: Path to state file (JSON)
+        """
+        if not state_file.exists():
+            logger.debug("No kill switch state file found at %s", state_file)
+            return
+
+        import json
+
+        try:
+            with open(state_file) as f:
+                state = json.load(f)
+
+            if state.get("active"):
+                self._active = True
+                self._activation_reason = state.get("reason", "unknown")
+                self._activated_by = state.get("activated_by", "unknown")
+
+                activated_at_str = state.get("activated_at")
+                if activated_at_str:
+                    self._activated_at = datetime.fromisoformat(activated_at_str)
+
+                logger.warning(
+                    "Restored active kill switch from %s: %s (activated at %s)",
+                    state_file,
+                    self._activation_reason,
+                    self._activated_at.isoformat() if self._activated_at else "unknown",
+                )
+            else:
+                logger.debug("Kill switch state restored (inactive)")
+
+        except Exception as e:
+            logger.error("Failed to restore kill switch state from %s: %s", state_file, e)

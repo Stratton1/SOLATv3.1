@@ -187,6 +187,90 @@ def atr(
     return ema(true_ranges, period)
 
 
+def atr_pct(atr_values: Sequence[float], closes: Sequence[float]) -> list[float]:
+    """Calculate ATR as a fraction of close (ATR / close)."""
+    result = [0.0] * len(closes)
+    for i in range(len(closes)):
+        close = closes[i]
+        if close == 0:
+            result[i] = 0.0
+        else:
+            result[i] = atr_values[i] / close
+    return result
+
+
+def adx(
+    highs: Sequence[float],
+    lows: Sequence[float],
+    closes: Sequence[float],
+    period: int = 14,
+) -> list[float]:
+    """Calculate Average Directional Index (ADX)."""
+    n = len(closes)
+    if n < 2:
+        return [0.0] * n
+
+    plus_dm = [0.0] * n
+    minus_dm = [0.0] * n
+    tr = [0.0] * n
+
+    for i in range(1, n):
+        up_move = highs[i] - highs[i - 1]
+        down_move = lows[i - 1] - lows[i]
+        plus_dm[i] = up_move if up_move > down_move and up_move > 0 else 0.0
+        minus_dm[i] = down_move if down_move > up_move and down_move > 0 else 0.0
+        tr[i] = max(
+            highs[i] - lows[i],
+            abs(highs[i] - closes[i - 1]),
+            abs(lows[i] - closes[i - 1]),
+        )
+
+    atr_smoothed = ema(tr, period)
+    plus_dm_smoothed = ema(plus_dm, period)
+    minus_dm_smoothed = ema(minus_dm, period)
+
+    plus_di = [0.0] * n
+    minus_di = [0.0] * n
+    dx = [0.0] * n
+    for i in range(n):
+        atr_val = atr_smoothed[i]
+        if atr_val <= 0:
+            continue
+        plus_di[i] = 100.0 * plus_dm_smoothed[i] / atr_val
+        minus_di[i] = 100.0 * minus_dm_smoothed[i] / atr_val
+        denom = plus_di[i] + minus_di[i]
+        if denom > 0:
+            dx[i] = 100.0 * abs(plus_di[i] - minus_di[i]) / denom
+
+    return ema(dx, period)
+
+
+def volume_sma(volumes: Sequence[float], period: int = 20) -> list[float]:
+    """Simple moving average of volume."""
+    return sma(volumes, period)
+
+
+def volume_zscore(volumes: Sequence[float], period: int = 20) -> list[float]:
+    """Rolling z-score for volume with safe zero-variance handling."""
+    n = len(volumes)
+    if n == 0:
+        return []
+    if n < period:
+        return [0.0] * n
+
+    result = [0.0] * n
+    for i in range(period - 1, n):
+        window = volumes[i - period + 1 : i + 1]
+        mean = sum(window) / period
+        variance = sum((v - mean) ** 2 for v in window) / period
+        std = variance**0.5
+        result[i] = 0.0 if std == 0 else (volumes[i] - mean) / std
+
+    for i in range(period - 1):
+        result[i] = result[period - 1]
+    return result
+
+
 def bollinger_bands(
     closes: Sequence[float],
     period: int = 20,

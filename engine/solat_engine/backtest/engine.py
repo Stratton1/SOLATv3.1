@@ -38,10 +38,11 @@ from solat_engine.backtest.sizing import (
 from solat_engine.data.models import SupportedTimeframe
 from solat_engine.data.parquet_store import ParquetStore
 from solat_engine.logging import get_logger
-from solat_engine.strategies.elite8 import (
+from solat_engine.strategies.elite8_hardened import (
     BarData,
     Elite8BaseStrategy,
     Elite8StrategyFactory,
+    StrategyContext,
 )
 
 logger = get_logger(__name__)
@@ -343,7 +344,16 @@ class BacktestEngineV1:
             current_position_side = position.side.value
 
         # Generate signal
-        signal = strategy.generate_signal(bar_data, current_position_side)
+        signal = strategy.generate_signal(
+            bar_data,
+            current_position_side,
+            context=StrategyContext(
+                symbol=symbol,
+                timeframe=request.timeframe,
+                bar_index=len(bar_data) - 1,
+                bot_name=bot_name,
+            ),
+        )
 
         if signal.is_hold:
             return

@@ -119,6 +119,8 @@ class ExecutionState(BaseModel):
     connected: bool = False
     armed: bool = False
     kill_switch_active: bool = False
+    signals_enabled: bool = True
+    demo_arm_enabled: bool = False
     last_error: str | None = None
     last_error_ts: datetime | None = None
     session_start: datetime | None = None

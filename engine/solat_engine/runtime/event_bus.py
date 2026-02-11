@@ -73,6 +73,20 @@ class EventType(str, Enum):
     EXECUTION_KILL_SWITCH_ACTIVATED = "execution.kill_switch_activated"
     EXECUTION_KILL_SWITCH_RESET = "execution.kill_switch_reset"
 
+    # Recommendation events
+    RECOMMENDATION_GENERATED = "recommendation.generated"
+    RECOMMENDATION_APPLIED = "recommendation.applied"
+
+    # Autopilot events
+    AUTOPILOT_ENABLED = "autopilot.enabled"
+    AUTOPILOT_DISABLED = "autopilot.disabled"
+    AUTOPILOT_SIGNAL = "autopilot.signal"
+
+    # Derive events
+    DERIVE_STARTED = "derive.started"
+    DERIVE_PROGRESS = "derive.progress"
+    DERIVE_COMPLETED = "derive.completed"
+
     # System events
     HEARTBEAT = "system.heartbeat"
     ERROR = "system.error"

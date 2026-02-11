@@ -2,13 +2,17 @@
 Data API routes for historical bars and sync operations.
 """
 
+import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from solat_engine.api.ig_routes import get_ig_client
+from solat_engine.backtest.sweep_utils import auto_derive_timeframe
 from solat_engine.catalog.store import CatalogueStore
 from solat_engine.catalog.symbols import resolve_storage_symbol
 from solat_engine.config import Settings, get_settings_dep
@@ -18,6 +22,7 @@ from solat_engine.data.models import (
 )
 from solat_engine.data.parquet_store import ParquetStore
 from solat_engine.logging import get_logger
+from solat_engine.runtime.event_bus import Event, EventType, get_event_bus
 from solat_engine.runtime.jobs import get_job_runner
 
 router = APIRouter(prefix="/data", tags=["Data"])
@@ -26,6 +31,11 @@ logger = get_logger(__name__)
 # Lazy-initialized stores
 _parquet_store: ParquetStore | None = None
 _catalogue_store: CatalogueStore | None = None
+
+
+def get_settings() -> Settings:
+    """Compatibility helper for tests and dependency injection."""
+    return get_settings_dep()
 
 
 def get_parquet_store(settings: Settings = Depends(get_settings_dep)) -> ParquetStore:
@@ -318,6 +328,39 @@ async def data_availability(
     return availability
 
 
+@router.get("/availability/detail")
+async def data_availability_detail(
+    store: ParquetStore = Depends(get_parquet_store),
+) -> list[dict]:
+    """
+    Get detailed data availability per symbol per timeframe.
+
+    Returns per-symbol per-timeframe: min_ts, max_ts, bars_count.
+    """
+    summaries = store.get_summary()
+
+    from solat_engine.catalog.symbols import STORAGE_ALIAS_MAP
+    REVERSE_ALIAS_MAP = {v: k for k, v in STORAGE_ALIAS_MAP.items()}
+
+    details = []
+    for s in summaries:
+        raw_symbol = s.get("symbol")
+        timeframe = s.get("timeframe")
+        if not raw_symbol or not timeframe:
+            continue
+
+        symbol = REVERSE_ALIAS_MAP.get(raw_symbol, raw_symbol)
+        details.append({
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "bars_count": s.get("row_count", 0),
+            "min_ts": s.get("start_ts"),
+            "max_ts": s.get("end_ts"),
+        })
+
+    return details
+
+
 @router.get("/bars", response_model=BarsResponse)
 async def get_bars(
     symbol: str = Query(..., description="Instrument symbol"),
@@ -461,3 +504,214 @@ async def quick_sync(
     )
 
     return await sync_data(request, settings=settings, store=store, catalogue=catalogue)
+
+
+# =============================================================================
+# Artefact Index
+# =============================================================================
+
+
+class ArtefactIndexResponse(BaseModel):
+    """Response for artefact index scan."""
+
+    bars: list[dict[str, Any]] = Field(default_factory=list)
+    backtests: list[dict[str, Any]] = Field(default_factory=list)
+    sweeps: list[dict[str, Any]] = Field(default_factory=list)
+    generated_at: str = ""
+
+
+@router.get("/artefacts/index", response_model=ArtefactIndexResponse)
+async def artefacts_index(
+    settings: Settings = Depends(get_settings_dep),
+    store: ParquetStore = Depends(get_parquet_store),
+) -> ArtefactIndexResponse:
+    """
+    Scan disk for bars, backtests, and sweep artefacts.
+
+    Reads only JSON manifests (no Parquet reads) for speed.
+    Limits to 100 items per category, sorted desc by date.
+    """
+    data_dir = settings.data_dir
+    limit = 100
+
+    # --- Bars: reuse store.get_summary() ---
+    bars_summaries = store.get_summary()
+    from solat_engine.catalog.symbols import STORAGE_ALIAS_MAP
+    reverse_alias = {v: k for k, v in STORAGE_ALIAS_MAP.items()}
+
+    bars = []
+    for s in bars_summaries:
+        raw_sym = s.get("symbol", "")
+        bars.append({
+            "symbol": reverse_alias.get(raw_sym, raw_sym),
+            "timeframe": s.get("timeframe", ""),
+            "row_count": s.get("row_count", 0),
+            "start_ts": s.get("start_ts"),
+            "end_ts": s.get("end_ts"),
+        })
+
+    # --- Backtests: scan manifest.json files ---
+    backtests_dir = data_dir / "backtests"
+    backtests: list[dict[str, Any]] = []
+    if backtests_dir.exists():
+        for manifest_path in sorted(backtests_dir.glob("*/manifest.json"), reverse=True):
+            if len(backtests) >= limit:
+                break
+            try:
+                manifest = json.loads(manifest_path.read_text())
+                backtests.append({
+                    "run_id": manifest.get("run_id", manifest_path.parent.name),
+                    "created_at": manifest.get("created_at", ""),
+                    "symbols": manifest.get("symbols", []),
+                    "bots": manifest.get("bots", []),
+                    "timeframe": manifest.get("timeframe", ""),
+                    "sharpe": manifest.get("sharpe"),
+                    "total_trades": manifest.get("total_trades", 0),
+                    "path": str(manifest_path.parent),
+                })
+            except Exception:
+                continue
+
+    # --- Sweeps: scan manifests + top_picks ---
+    sweeps_dir = data_dir / "sweep_results"
+    sweeps: list[dict[str, Any]] = []
+    if sweeps_dir.exists():
+        for sweep_dir in sorted(sweeps_dir.iterdir(), reverse=True):
+            if len(sweeps) >= limit:
+                break
+            if not sweep_dir.is_dir():
+                continue
+            entry: dict[str, Any] = {
+                "sweep_id": sweep_dir.name,
+                "path": str(sweep_dir),
+            }
+            manifest_path = sweep_dir / "preflight.json"
+            if manifest_path.exists():
+                try:
+                    pf = json.loads(manifest_path.read_text())
+                    entry["scope"] = pf.get("scope", pf.get("effective_scope", ""))
+                    entry["total_combos"] = pf.get("valid_combos", 0)
+                    entry["generated_at"] = pf.get("generated_at", "")
+                except Exception:
+                    pass
+            top_picks_path = sweep_dir / "top_picks.json"
+            if top_picks_path.exists():
+                try:
+                    tp = json.loads(top_picks_path.read_text())
+                    picks = tp.get("picks", [])
+                    if picks:
+                        entry["top_sharpe"] = max(
+                            (p.get("metrics", {}).get("sharpe", 0) for p in picks),
+                            default=0,
+                        )
+                except Exception:
+                    pass
+            sweeps.append(entry)
+
+    return ArtefactIndexResponse(
+        bars=bars[:limit],
+        backtests=backtests,
+        sweeps=sweeps,
+        generated_at=datetime.now(UTC).isoformat(),
+    )
+
+
+# =============================================================================
+# Derive All Timeframes
+# =============================================================================
+
+TARGET_DERIVE_TIMEFRAMES = ["15m", "30m", "1h", "4h"]
+
+# Module-level state for derive jobs
+_derive_jobs: dict[str, asyncio.Task] = {}
+_derive_results: dict[str, dict[str, Any]] = {}
+
+
+class DeriveAllResponse(BaseModel):
+    """Response from derive-all operation."""
+
+    ok: bool = True
+    run_id: str = ""
+    message: str = ""
+    total_symbols: int = 0
+    target_timeframes: list[str] = Field(default_factory=list)
+
+
+@router.post("/derive-all", response_model=DeriveAllResponse)
+async def derive_all(
+    settings: Settings = Depends(get_settings_dep),
+    store: ParquetStore = Depends(get_parquet_store),
+) -> DeriveAllResponse:
+    """
+    Derive 15m/30m/1h/4h bars from existing 1m data for all symbols.
+
+    Runs as a background task. Progress events are streamed via WebSocket.
+    """
+    # Find symbols with 1m data
+    summaries = store.get_summary(timeframe=SupportedTimeframe.M1)
+    symbols_with_1m = [s["symbol"] for s in summaries if s.get("row_count", 0) > 0]
+
+    if not symbols_with_1m:
+        return DeriveAllResponse(
+            ok=False,
+            message="No symbols with 1m data found. Sync 1m data first.",
+        )
+
+    run_id = f"derive_{uuid4().hex[:8]}"
+
+    async def _run_derive() -> None:
+        event_bus = get_event_bus()
+        await event_bus.publish(Event(
+            type=EventType.DERIVE_STARTED,
+            run_id=run_id,
+            data={"total_symbols": len(symbols_with_1m), "timeframes": TARGET_DERIVE_TIMEFRAMES},
+        ))
+
+        derived_count = 0
+        errors: list[str] = []
+        total_pairs = len(symbols_with_1m) * len(TARGET_DERIVE_TIMEFRAMES)
+
+        for i, symbol in enumerate(symbols_with_1m):
+            for tf in TARGET_DERIVE_TIMEFRAMES:
+                try:
+                    loop = asyncio.get_event_loop()
+                    ok = await loop.run_in_executor(
+                        None, auto_derive_timeframe, settings.data_dir, symbol, tf,
+                    )
+                    if ok:
+                        derived_count += 1
+                except Exception as e:
+                    errors.append(f"{symbol}/{tf}: {e}")
+
+                await event_bus.publish(Event(
+                    type=EventType.DERIVE_PROGRESS,
+                    run_id=run_id,
+                    data={
+                        "symbol": symbol,
+                        "timeframe": tf,
+                        "completed": i * len(TARGET_DERIVE_TIMEFRAMES) + TARGET_DERIVE_TIMEFRAMES.index(tf) + 1,
+                        "total": total_pairs,
+                    },
+                ))
+
+        _derive_results[run_id] = {
+            "derived_count": derived_count,
+            "errors": errors,
+        }
+
+        await event_bus.publish(Event(
+            type=EventType.DERIVE_COMPLETED,
+            run_id=run_id,
+            data={"derived_count": derived_count, "errors": errors},
+        ))
+
+    task = asyncio.create_task(_run_derive())
+    _derive_jobs[run_id] = task
+
+    return DeriveAllResponse(
+        ok=True,
+        run_id=run_id,
+        message=f"Deriving {len(TARGET_DERIVE_TIMEFRAMES)} timeframes for {len(symbols_with_1m)} symbols",
+        total_symbols=len(symbols_with_1m),
+        target_timeframes=TARGET_DERIVE_TIMEFRAMES,
+    )

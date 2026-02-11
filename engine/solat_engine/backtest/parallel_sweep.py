@@ -101,6 +101,8 @@ class ComboResult:
     avg_trade_pnl: float = 0.0
     error: str | None = None
     duration_s: float = 0.0
+    skipped: bool = False
+    skip_reason: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -119,6 +121,8 @@ class ComboResult:
             "avg_trade_pnl": self.avg_trade_pnl,
             "error": self.error,
             "duration_s": self.duration_s,
+            "skipped": self.skipped,
+            "skip_reason": self.skip_reason,
         }
 
     @classmethod
@@ -139,6 +143,8 @@ class ComboResult:
             avg_trade_pnl=d.get("avg_trade_pnl", 0.0),
             error=d.get("error"),
             duration_s=d.get("duration_s", 0.0),
+            skipped=d.get("skipped", False),
+            skip_reason=d.get("skip_reason"),
         )
 
 
@@ -359,6 +365,9 @@ class ParallelSweepRunner:
         force: bool = False,
         shuffle: bool = False,
         sweep_id: str | None = None,
+        fail_fast: bool = False,
+        max_combos: int | None = None,
+        min_trades: int = 0,
     ) -> dict[str, Any]:
         """
         Run parallel sweep.
@@ -408,13 +417,17 @@ class ParallelSweepRunner:
         combos_dir = sweep_dir / "combos"
         combos_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate all combos
+        # Generate all combos — sorted by (symbol, timeframe) for cache locality
         all_combos = [
             (bot, symbol, tf)
-            for bot in bots
             for symbol in symbols
             for tf in timeframes
+            for bot in bots
         ]
+
+        if max_combos is not None:
+            all_combos = all_combos[:max_combos]
+
         total_combos = len(all_combos)
 
         if shuffle:
@@ -534,6 +547,21 @@ class ParallelSweepRunner:
                     else:
                         failed += 1
 
+                    # Fail-fast: cancel remaining futures on first failure
+                    if fail_fast and not result.success:
+                        logger.warning(
+                            "Fail-fast triggered by %s/%s/%s: %s",
+                            result.bot, result.symbol, result.timeframe, result.error,
+                        )
+                        for f in future_to_combo:
+                            f.cancel()
+                        self._emit_progress({
+                            "type": "sweep_failed",
+                            "sweep_id": sweep_id,
+                            "error": f"Fail-fast: {result.bot}/{result.symbol}/{result.timeframe}",
+                        })
+                        break
+
                     # Progress
                     done = completed + failed - skipped_count
                     remaining = pending_count - done
@@ -581,8 +609,8 @@ class ParallelSweepRunner:
         manifest.last_updated = datetime.now(UTC).isoformat()
         atomic_write_json(manifest_path, manifest.to_dict())
 
-        # Write consolidated results
-        self._write_results(sweep_dir, all_results)
+        # Write consolidated results (with optional min_trades filter for output)
+        self._write_results(sweep_dir, all_results, min_trades=min_trades)
 
         completed_at = datetime.now(UTC)
         duration = (completed_at - started_at).total_seconds()
@@ -614,6 +642,7 @@ class ParallelSweepRunner:
             "duration_s": duration,
             "sweep_dir": str(sweep_dir),
             "results_path": str(sweep_dir / "results.csv"),
+            "results_parquet_path": str(sweep_dir / "results.parquet"),
         }
 
     def _find_resumable_sweep(self, request_hash: str) -> Path | None:
@@ -658,17 +687,37 @@ class ParallelSweepRunner:
             },
         )
 
-    def _write_results(self, sweep_dir: Path, results: list[ComboResult]) -> None:
-        """Write consolidated results to CSV and JSON."""
+    def _write_results(
+        self, sweep_dir: Path, results: list[ComboResult], min_trades: int = 0
+    ) -> None:
+        """Write consolidated results to CSV, Parquet, and JSON."""
         if not results:
             return
 
         # Sort by sharpe descending
         results.sort(key=lambda r: r.sharpe, reverse=True)
 
-        # CSV
+        # Full results DataFrame
         df = pd.DataFrame([r.to_dict() for r in results])
+
+        # CSV (all results)
         df.to_csv(sweep_dir / "results.csv", index=False)
+
+        # Parquet (all results)
+        try:
+            df.to_parquet(sweep_dir / "results.parquet", index=False)
+        except Exception as e:
+            logger.warning("Failed to write results.parquet: %s", e)
+
+        # Filtered results (min_trades) for summary
+        if min_trades > 0:
+            df_filtered = df[
+                (df["success"]) & (df["total_trades"] >= min_trades)
+            ]
+            if len(df_filtered) > 0:
+                df_filtered.to_csv(
+                    sweep_dir / f"results_min{min_trades}.csv", index=False
+                )
 
         # JSON
         atomic_write_json(sweep_dir / "results.json", {
@@ -797,7 +846,7 @@ Examples:
     args = parser.parse_args()
 
     # Import here to avoid circular imports
-    from solat_engine.strategies.elite8 import get_available_bots
+    from solat_engine.strategies.elite8_hardened import get_available_bots
 
     # Define scopes
     LIVE_FX_PAIRS = [

@@ -127,6 +127,8 @@ class StatusResponse(BaseModel):
     connected: bool
     armed: bool
     kill_switch_active: bool
+    signals_enabled: bool = True
+    demo_arm_enabled: bool = False
     account_id: str | None = None
     account_balance: float | None = None
     open_position_count: int = 0
@@ -328,6 +330,55 @@ class OrdersResponse(BaseModel):
     offset: int = 0
 
 
+class ModeGetResponse(BaseModel):
+    """Response for GET /execution/mode."""
+
+    signals_enabled: bool
+    demo_arm_enabled: bool
+    mode: str
+
+
+class ModeSetRequest(BaseModel):
+    """Request to set execution mode flags."""
+
+    signals_enabled: bool | None = None
+    demo_arm_enabled: bool | None = None
+
+
+class ModeSetResponse(BaseModel):
+    """Response for POST /execution/mode."""
+
+    ok: bool = True
+    signals_enabled: bool
+    demo_arm_enabled: bool
+    mode: str
+
+
+class SignalItem(BaseModel):
+    """Single signal entry for the signals panel."""
+
+    ts: str
+    symbol: str | None = None
+    bot: str | None = None
+    timeframe: str | None = None
+    side: str | None = None
+    size: float | None = None
+    confidence: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+    source: str | None = None
+    intent_id: str | None = None
+
+
+class SignalsResponse(BaseModel):
+    """Response from signals endpoint."""
+
+    signals: list[SignalItem] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 100
+
+
 class AllowlistSetRequest(BaseModel):
     """Request to set symbol allowlist."""
 
@@ -365,6 +416,8 @@ async def get_status(
         connected=state.connected,
         armed=state.armed,
         kill_switch_active=state.kill_switch_active,
+        signals_enabled=state.signals_enabled,
+        demo_arm_enabled=state.demo_arm_enabled,
         account_id=state.account_id,
         account_balance=state.account_balance,
         open_position_count=state.open_position_count,
@@ -372,6 +425,19 @@ async def get_status(
         trades_this_hour=state.trades_this_hour,
         last_error=state.last_error,
     )
+
+
+@router.get("/state", response_model=StatusResponse)
+async def get_state_compat(
+    exec_router: ExecutionRouter = Depends(get_execution_router),
+) -> StatusResponse:
+    """
+    Compatibility alias for legacy clients still calling /execution/state.
+
+    Keep behavior identical to /execution/status so mixed UI versions do not
+    generate persistent 404 noise during polling.
+    """
+    return await get_status(exec_router)
 
 
 @router.post("/connect", response_model=ConnectResponse)
@@ -565,7 +631,14 @@ async def run_once(
     Run a single execution cycle (for testing).
 
     Creates an order intent and routes it through the execution pipeline.
+    Restricted to DEMO mode with demo_arm_enabled.
     """
+    if exec_router.state.mode != ExecutionMode.DEMO:
+        raise HTTPException(status_code=403, detail="Run-once is DEMO-only")
+
+    if not exec_router.state.demo_arm_enabled:
+        raise HTTPException(status_code=400, detail="DEMO arm must be enabled for run-once")
+
     if not exec_router.state.connected:
         raise HTTPException(status_code=400, detail="Not connected")
 
@@ -1104,6 +1177,123 @@ async def get_orders(
     orders = orders[offset : offset + limit]
 
     return OrdersResponse(orders=orders, total=total, limit=limit, offset=offset)
+
+
+# =============================================================================
+# Signals
+# =============================================================================
+
+
+@router.get("/signals", response_model=SignalsResponse)
+async def get_signals(
+    symbol: str | None = Query(default=None, description="Filter by symbol"),
+    bot: str | None = Query(default=None, description="Filter by bot name"),
+    timeframe: str | None = Query(default=None, description="Filter by timeframe"),
+    direction: str | None = Query(default=None, description="Filter by direction (BUY/SELL)"),
+    since: str | None = Query(default=None, description="ISO datetime lower bound"),
+    limit: int = Query(default=100, ge=1, le=1000),
+    exec_router: ExecutionRouter = Depends(get_execution_router),
+) -> SignalsResponse:
+    """
+    Return strategy signals (intents) for the terminal signals panel.
+
+    Reads from the current run's ledger.jsonl — intent entries
+    represent strategy signals before order processing.
+    """
+    entries = _read_ledger_entries(exec_router)
+
+    # Parse since timestamp
+    since_dt: datetime | None = None
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid 'since' datetime format")
+
+    signals: list[SignalItem] = []
+    for entry in entries:
+        if entry.entry_type != "intent":
+            continue
+
+        meta = entry.metadata or {}
+        entry_side = entry.side.value if entry.side else None
+        entry_bot = meta.get("bot")
+        entry_tf = meta.get("timeframe")
+        entry_source = meta.get("source")
+
+        if symbol and entry.symbol != symbol:
+            continue
+        if bot and entry_bot != bot:
+            continue
+        if timeframe and entry_tf != timeframe:
+            continue
+        if direction and entry_side != direction.upper():
+            continue
+        if since_dt and entry.timestamp < since_dt:
+            continue
+
+        signals.append(SignalItem(
+            ts=entry.timestamp.isoformat(),
+            symbol=entry.symbol,
+            bot=entry_bot,
+            timeframe=entry_tf,
+            side=entry_side,
+            size=entry.size,
+            confidence=meta.get("confidence"),
+            stop_loss=meta.get("stop_loss"),
+            take_profit=meta.get("take_profit"),
+            reason_codes=entry.reason_codes,
+            source=entry_source,
+            intent_id=str(entry.intent_id) if entry.intent_id else None,
+        ))
+
+    total = len(signals)
+    signals = signals[:limit]
+
+    return SignalsResponse(signals=signals, total=total, limit=limit)
+
+
+# =============================================================================
+# Mode Flags
+# =============================================================================
+
+
+@router.get("/mode", response_model=ModeGetResponse)
+async def get_mode(
+    exec_router: ExecutionRouter = Depends(get_execution_router),
+) -> ModeGetResponse:
+    """Get current execution mode flags."""
+    state = exec_router.state
+    return ModeGetResponse(
+        signals_enabled=state.signals_enabled,
+        demo_arm_enabled=state.demo_arm_enabled,
+        mode=state.mode.value,
+    )
+
+
+@router.post("/mode", response_model=ModeSetResponse)
+async def set_mode(
+    request: ModeSetRequest,
+    exec_router: ExecutionRouter = Depends(get_execution_router),
+) -> ModeSetResponse:
+    """
+    Set execution mode flags.
+
+    - signals_enabled: toggle strategy signal generation
+    - demo_arm_enabled: toggle DEMO order submission capability
+    """
+    if request.signals_enabled is not None:
+        await exec_router.set_signals_enabled(request.signals_enabled)
+    if request.demo_arm_enabled is not None:
+        await exec_router.set_demo_arm_enabled(request.demo_arm_enabled)
+
+    state = exec_router.state
+    return ModeSetResponse(
+        ok=True,
+        signals_enabled=state.signals_enabled,
+        demo_arm_enabled=state.demo_arm_enabled,
+        mode=state.mode.value,
+    )
 
 
 # =============================================================================

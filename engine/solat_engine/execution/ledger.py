@@ -294,6 +294,8 @@ class ExecutionLedger:
         if records:
             df = pd.DataFrame(records)
             df.to_parquet(self._snapshots_path, index=False)
+            # Clear snapshots after successful flush to prevent memory leak
+            self._snapshots.clear()
 
     def finalize(self) -> None:
         """Finalize ledger (flush pending data)."""

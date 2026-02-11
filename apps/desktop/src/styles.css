@@ -60,6 +60,13 @@
 
   /* Font */
   --font-mono: "SF Mono", Monaco, "Cascadia Code", monospace;
+
+  /* Status Page Specific */
+  --status-panel-bg: #ffffff;
+  --status-panel-border: #e1e4e8;
+  --status-panel-header: #f6f8fa;
+  --status-panel-title: #24292e;
+  --status-panel-text: #586069;
 }
 
 * {
@@ -76,12 +83,244 @@ html, body, #root {
 body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-app);
   color: var(--text-primary);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Status Dashboard Layout */
+.status-dashboard {
+  display: grid;
+  grid-template-areas:
+    "header header header"
+    "left-col mid-col right-col";
+  grid-template-columns: 320px 1fr 320px;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+  width: 100%;
+  gap: 12px;
+  padding: 12px;
+  overflow: hidden;
+}
+
+/* Suppress .app-main scroll+padding when status dashboard fills it */
+.app-main:has(.status-dashboard) {
+  overflow: hidden;
+  padding: 0;
+}
+
+.status-dashboard-header {
+  grid-area: header;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+  flex-shrink: 0;
+}
+
+.status-dashboard-left {
+  grid-area: left-col;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.status-dashboard-mid {
+  grid-area: mid-col;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+  min-width: 0; /* Prevent horizontal blowout */
+}
+
+.status-dashboard-right {
+  grid-area: right-col;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Responsive: Stack columns on smaller screens */
+@media (max-width: 1200px) {
+  .status-dashboard {
+    grid-template-areas:
+      "header header"
+      "left-col right-col"
+      "mid-col mid-col";
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto 1fr;
+    overflow-y: auto;
+  }
+}
+
+/* Terminal Cards */
+.terminal-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.terminal-card-header {
+  background: var(--status-panel-header);
+  border-bottom: 1px solid var(--border-color);
+  padding: 6px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.terminal-card-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--status-panel-title);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.terminal-card-body {
+  padding: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Scrollable card body — use on cards whose content can overflow */
+.terminal-card-body.scrollable {
+  overflow-y: auto;
+}
+
+/* Highlight flash animation for scroll-to-card targets */
+@keyframes card-highlight-flash {
+  0%   { box-shadow: 0 0 0 0 var(--accent-blue); }
+  30%  { box-shadow: 0 0 0 3px var(--accent-blue); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.terminal-card.highlight-flash {
+  animation: card-highlight-flash 1.2s ease-out;
+}
+
+/* Dense Data Rows */
+.dense-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 12px;
+}
+
+.dense-row:last-child {
+  border-bottom: none;
+}
+
+.dense-label {
+  color: var(--text-secondary);
+}
+
+.dense-value {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.dense-value.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* LED Indicators */
+.led-group {
+  display: flex;
+  gap: 16px;
+}
+
+.led-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cbd5e0;
+}
+
+.led.active { background: var(--accent-green); box-shadow: 0 0 4px var(--accent-green); }
+.led.error { background: var(--accent-red); box-shadow: 0 0 4px var(--accent-red); }
+.led.warning { background: var(--accent-yellow); box-shadow: 0 0 4px var(--accent-yellow); }
+
+/* Allowlist Grid */
+.allowlist-grouped-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.allowlist-symbol-group {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+}
+
+.allowlist-symbol-header {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.allowlist-symbol-entries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.allowlist-entry-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  font-size: 9px;
+  font-family: var(--font-mono);
+}
+
+.allowlist-entry-tag.active {
+  background: var(--accent-green-bg);
+  color: var(--accent-green);
+  border: 1px solid rgba(22, 163, 74, 0.2);
+}
+
+.allowlist-entry-tag.disabled {
+  opacity: 0.5;
+}
+
+.entry-bot { font-weight: 700; }
+.entry-tf { opacity: 0.8; }
 
 .app {
   display: flex;
@@ -6596,6 +6835,7 @@ body {
 .terminal-signals-table th {
   position: sticky;
   top: 0;
+  z-index: 1;
   background: var(--bg-card);
   padding: 4px 8px;
   text-align: left;

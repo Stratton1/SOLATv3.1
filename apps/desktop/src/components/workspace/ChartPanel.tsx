@@ -78,7 +78,6 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
     symbol: panel.symbol,
     timeframe: panel.timeframe,
     indicators: shouldFetchOverlays ? enabledIndicators : [],
-    bars: shouldFetchOverlays ? bars : undefined,
   });
 
   const shouldFetchSignals = panel.showMarkers && (isFocused || isOnlyPanel);

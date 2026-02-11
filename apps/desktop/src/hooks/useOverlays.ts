@@ -8,7 +8,6 @@
 
 import { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import {
-  Bar,
   OverlayRequest,
   OverlayResult,
   engineClient,
@@ -56,7 +55,6 @@ interface UseOverlaysOptions {
   symbol: string;
   timeframe: string;
   indicators: IndicatorConfig[];
-  bars?: Bar[];
   /** Debounce delay in ms (default 250) */
   debounceMs?: number;
 }
@@ -99,7 +97,6 @@ export function useOverlays({
   symbol,
   timeframe,
   indicators,
-  bars,
   debounceMs = 250,
 }: UseOverlaysOptions): UseOverlaysResult {
   const [overlays, setOverlays] = useState<OverlayResult[]>([]);

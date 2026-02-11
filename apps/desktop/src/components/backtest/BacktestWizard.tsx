@@ -43,7 +43,7 @@ export function BacktestWizard({ onClose, onComplete }: BacktestWizardProps) {
   });
 
   // Runner
-  const { runId, status, isRunning, error, startBacktest } =
+  const { runId, status, isRunning, error, startBacktest, reset } =
     useBacktestRunner();
 
   const toggleBot = useCallback((id: string) => {

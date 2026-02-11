@@ -56,13 +56,17 @@ def reset_singletons() -> Generator[None, None, None]:
         data_routes,
         ig_routes,
         market_data_routes,
+        recommendation_routes,
     )
+    from solat_engine.autopilot import service as autopilot_service_mod
     from solat_engine.market_data import publisher
 
     catalog_routes._catalogue_store = None
     ig_routes._ig_client = None
     data_routes._parquet_store = None
     data_routes._catalogue_store = None
+    data_routes._derive_jobs.clear()
+    data_routes._derive_results.clear()
     backtest_routes._parquet_store = None
     backtest_routes._job_results.clear()
     backtest_routes._active_jobs.clear()
@@ -70,4 +74,6 @@ def reset_singletons() -> Generator[None, None, None]:
     backtest_routes._sweep_jobs.clear()
     market_data_routes._market_service = None
     market_data_routes._catalogue_store = None
+    recommendation_routes._recommended_set_manager = None
+    autopilot_service_mod._autopilot_service = None
     publisher.reset_publisher()

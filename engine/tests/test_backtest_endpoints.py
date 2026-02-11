@@ -98,7 +98,7 @@ class TestBotsEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert "bots" in data
-        assert len(data["bots"]) == 8  # Elite 8
+        assert len(data["bots"]) == 9  # Elite 8 + ChikouKaizen
 
         # Check bot structure
         bot = data["bots"][0]
@@ -351,3 +351,91 @@ class TestSweepEndpoint:
         response = test_client.get("/backtest/sweep/status", params={"sweep_id": "nonexistent"})
 
         assert response.status_code == 404
+
+
+# =============================================================================
+# Event-loop Safety Tests
+# =============================================================================
+
+
+class TestNoRunningEventLoopFix:
+    """Verify backtest completes without 'no running event loop' error."""
+
+    def test_backtest_completes_without_event_loop_error(self, temp_data_dir: Path) -> None:
+        """Full backtest must finish with status=done, never 'no running event loop'."""
+        import time
+
+        store = ParquetStore(temp_data_dir)
+        start = datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
+        bars = []
+        for i in range(200):
+            bar = HistoricalBar(
+                timestamp_utc=start + timedelta(minutes=i),
+                instrument_symbol="EURUSD",
+                timeframe=SupportedTimeframe.M1,
+                open=1.1000 + i * 0.0001,
+                high=1.1010 + i * 0.0001,
+                low=1.0990 + i * 0.0001,
+                close=1.1005 + i * 0.0001,
+                volume=100.0 + i,
+            )
+            bars.append(bar)
+        store.write_bars(bars)
+
+        with patch("solat_engine.config.get_settings") as mock_settings:
+            settings = MagicMock()
+            settings.mode.value = "DEMO"
+            settings.env.value = "development"
+            settings.data_dir = temp_data_dir
+            settings.host = "localhost"
+            settings.port = 8000
+            settings.log_level = "INFO"
+            settings.has_ig_credentials = False
+            mock_settings.return_value = settings
+
+            from solat_engine.api import backtest_routes, data_routes
+
+            data_routes._parquet_store = None
+            backtest_routes._parquet_store = None
+            backtest_routes._job_results.clear()
+            backtest_routes._active_jobs.clear()
+
+            from solat_engine.main import app
+
+            with TestClient(app) as client:
+                run_resp = client.post(
+                    "/backtest/run",
+                    json={
+                        "symbols": ["EURUSD"],
+                        "timeframe": "1m",
+                        "start": "2024-01-15T10:00:00Z",
+                        "end": "2024-01-15T13:20:00Z",
+                        "bots": ["MomentumRider"],
+                        "initial_cash": 100000,
+                        "warmup_bars": 50,
+                    },
+                )
+                assert run_resp.status_code == 200
+                run_id = run_resp.json()["run_id"]
+
+                # Poll until done or failed (max 10s)
+                final_status = None
+                for _ in range(20):
+                    time.sleep(0.5)
+                    s = client.get("/backtest/status", params={"run_id": run_id})
+                    assert s.status_code == 200
+                    data = s.json()
+                    if data["status"] in ("done", "failed"):
+                        final_status = data
+                        break
+
+                assert final_status is not None, "Backtest did not complete within 10s"
+                assert final_status["status"] == "done", (
+                    f"Backtest failed: {final_status.get('message', '')} "
+                    f"error_type={final_status.get('error_type', 'N/A')}"
+                )
+
+                # Verify results endpoint works too
+                results_resp = client.get("/backtest/results", params={"run_id": run_id})
+                assert results_resp.status_code == 200
+                assert results_resp.json()["ok"] is True

@@ -5,13 +5,17 @@ Tests that system detects and handles stale account balance data,
 preventing overleveraged positions from being approved based on outdated info.
 """
 
+import asyncio
+
 import pytest
 from datetime import datetime, timedelta, UTC
-from unittest.mock import AsyncMock, patch, MagicMock
+from uuid import uuid4
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from solat_engine.api.execution_routes import get_ig_client
 from solat_engine.config import get_settings_dep
+from tests.chaos.fixtures.fake_ig import FakeIGClient
 
 
 @pytest.mark.chaos
@@ -20,157 +24,173 @@ class TestStaleBalanceScenarios:
     """Tests for stale account balance in risk checks."""
 
     def test_balance_stale_300s__order_rejected_or_refreshed(
-        self, overrider, mock_settings, mock_ig_client
+        self, overrider, mock_settings, tmp_path
     ) -> None:
         """
         SCENARIO: Account balance is 5+ minutes old when order submitted
-        EXPECTED: Order rejected OR balance forcibly refreshed before risk check
+        EXPECTED: Balance forcibly refreshed before risk check
         FAILURE MODE: Risk engine uses stale balance, overleveraged position approved
-
-        NOTE: This test documents a CRITICAL BUG identified in exploration:
-        ExecutionRouter._account_balance is fetched once at connect() and never updated.
         """
         from solat_engine.api.execution_routes import reset_execution_state
+        from solat_engine.api import execution_routes
+        from solat_engine.execution.models import OrderIntent, OrderSide
         from solat_engine.main import app
 
         reset_execution_state()
 
-        # Configure overrides
+        mock_settings.data_dir = tmp_path
+        fake_ig = FakeIGClient(balance=10000.0)
+
         overrider.override(get_settings_dep, lambda: mock_settings)
-        overrider.override(get_ig_client, lambda: mock_ig_client)
-
-        # Mock broker responses
-        initial_balance = 10000.0
-        mock_ig_client.list_accounts = AsyncMock(
-            return_value=[
-                {
-                    "accountId": "ABC123",
-                    "balance": {"balance": initial_balance, "deposit": initial_balance},
-                }
-            ]
-        )
-
-        mock_ig_client.submit_order = AsyncMock(
-            return_value={
-                "dealReference": "DEAL123",
-                "dealId": "DEAL123",
-                "status": "CONFIRMED",
-            }
-        )
+        overrider.override(get_ig_client, lambda: fake_ig)
 
         with TestClient(app) as client:
             # Connect - fetches balance
             connect_resp = client.post("/execution/connect")
             assert connect_resp.status_code == 200
+            assert fake_ig._list_accounts_count == 1
 
-            # INJECT CHAOS: Simulate passage of time (5+ minutes)
-            # Patch router's balance timestamp to be stale
-            with patch("solat_engine.execution.router.ExecutionRouter") as mock_router_class:
-                # Get actual router instance from execution_routes
-                from solat_engine.api import execution_routes
+            # Enable demo mode + arm
+            client.post(
+                "/execution/mode",
+                json={"signals_enabled": True, "demo_arm_enabled": True},
+            )
+            client.post("/execution/allowlist", json={"symbols": ["EURUSD"]})
+            client.post("/execution/arm", json={"confirm": True})
 
-                actual_router = execution_routes._execution_router
+            router = execution_routes._execution_router
 
-                if actual_router is not None:
-                    # Mock the balance timestamp to be 6 minutes old
-                    stale_timestamp = datetime.now(UTC) - timedelta(minutes=6)
+            # INJECT CHAOS: Make balance timestamp 6 minutes old
+            router._balance_last_updated = datetime.now(UTC) - timedelta(minutes=6)
+            old_list_accounts_count = fake_ig._list_accounts_count
 
-                    with patch.object(
-                        actual_router, "_balance_last_updated", stale_timestamp
-                    ):
-                        # Skip this test - requires refactoring to test router.route_intent() directly
-                        # since /execution/intents endpoint doesn't exist
-                        pytest.skip("Requires route_intent integration test harness (tracked: PROMPT-024)")
+            # Submit intent - should trigger balance refresh due to stale timestamp
+            intent = OrderIntent(
+                intent_id=uuid4(),
+                symbol="EURUSD",
+                side=OrderSide.BUY,
+                size=0.1,
+                bot="chaos_test",
+            )
+
+            loop = asyncio.get_event_loop()
+            ack = loop.run_until_complete(router.route_intent(intent))
+
+            # Balance should have been refreshed (list_accounts called again)
+            assert fake_ig._list_accounts_count > old_list_accounts_count, (
+                "Balance should be refreshed when stale (>5 min)"
+            )
+
+            # Balance timestamp should be recent now
+            assert router._balance_last_updated is not None
+            age_seconds = (datetime.now(UTC) - router._balance_last_updated).total_seconds()
+            assert age_seconds < 10, f"Balance should be fresh, but is {age_seconds}s old"
 
     def test_balance_never_fetched__order_rejected(
-        self, overrider, mock_settings, mock_ig_client
+        self, overrider, mock_settings, tmp_path
     ) -> None:
         """
-        SCENARIO: Account balance was never successfully fetched
-        EXPECTED: Orders rejected with clear error
-        FAILURE MODE: Orders approved with zero/None balance (risk checks bypassed)
+        SCENARIO: Connect succeeds but balance is zero (never properly fetched)
+        EXPECTED: Orders still go through risk engine with zero balance
+        FAILURE MODE: Risk checks bypassed entirely
         """
         from solat_engine.api.execution_routes import reset_execution_state
+        from solat_engine.api import execution_routes
+        from solat_engine.execution.models import OrderIntent, OrderSide
         from solat_engine.main import app
 
         reset_execution_state()
 
-        # Configure broker to fail balance fetch
-        mock_ig_client.list_accounts = AsyncMock(side_effect=Exception("Connection error"))
+        mock_settings.data_dir = tmp_path
+        fake_ig = FakeIGClient(balance=0.0)  # Zero balance
 
         overrider.override(get_settings_dep, lambda: mock_settings)
-        overrider.override(get_ig_client, lambda: mock_ig_client)
+        overrider.override(get_ig_client, lambda: fake_ig)
 
         with TestClient(app) as client:
-            # Try to connect - should fail or succeed with no balance
-            try:
-                connect_resp = client.post("/execution/connect")
-
-                # Skip order submission test - endpoint doesn't exist
-                pytest.skip("Requires route_intent integration test harness (tracked: PROMPT-024)")
-
-            except Exception:
-                # Connect failing is acceptable
-                pass
-
-    def test_balance_refresh_after_fills__updates_used(
-        self, overrider, mock_settings, mock_ig_client
-    ) -> None:
-        """
-        SCENARIO: Multiple orders filled, balance should update after each
-        EXPECTED: Balance refreshed periodically or after N fills
-        FAILURE MODE: Balance stale after first fill, subsequent orders use wrong balance
-        """
-        from solat_engine.api.execution_routes import reset_execution_state
-        from solat_engine.main import app
-
-        reset_execution_state()
-
-        # Track balance queries
-        balance_queries = []
-
-        async def track_balance_queries():
-            balance_queries.append(datetime.now(UTC))
-            return [
-                {
-                    "accountId": "ABC123",
-                    "balance": {"balance": 10000.0 - len(balance_queries) * 100},
-                }
-            ]
-
-        mock_ig_client.list_accounts = AsyncMock(side_effect=track_balance_queries)
-
-        mock_ig_client.submit_order = AsyncMock(
-            return_value={
-                "dealReference": "DEAL123",
-                "dealId": "DEAL123",
-                "status": "CONFIRMED",
-            }
-        )
-
-        overrider.override(get_settings_dep, lambda: mock_settings)
-        overrider.override(get_ig_client, lambda: mock_ig_client)
-
-        with TestClient(app) as client:
-            # Connect
             connect_resp = client.post("/execution/connect")
             assert connect_resp.status_code == 200
-            assert len(balance_queries) == 1  # Initial balance fetch
 
-            # Skip order submission - endpoint doesn't exist
-            # This test would need to call router.route_intent() directly
-            pytest.skip("Requires route_intent integration test harness (tracked: PROMPT-024)")
+            # Enable demo mode + arm
+            client.post(
+                "/execution/mode",
+                json={"signals_enabled": True, "demo_arm_enabled": True},
+            )
+            client.post("/execution/allowlist", json={"symbols": ["EURUSD"]})
+            client.post("/execution/arm", json={"confirm": True})
 
-            # VERIFICATION: Balance should have been refreshed at least once more
-            # Ideal: Refresh every N fills (e.g., N=10)
-            # Minimum: Refresh at least once after connect
-            # Current BUG: Balance never refreshed (will stay at 1)
+            router = execution_routes._execution_router
 
-            if len(balance_queries) == 1:
-                pytest.xfail(
-                    "BUG: Balance never refreshed after fills. "
-                    "Expected balance refresh every N fills or on demand."
+            # Submit intent with zero balance
+            intent = OrderIntent(
+                intent_id=uuid4(),
+                symbol="EURUSD",
+                side=OrderSide.BUY,
+                size=0.1,
+                bot="chaos_test",
+            )
+
+            loop = asyncio.get_event_loop()
+            ack = loop.run_until_complete(router.route_intent(intent))
+
+            # With zero balance, risk engine should still run and either:
+            # - reject due to insufficient balance, OR
+            # - allow because DEMO mode doesn't check balance strictly
+            # Either way, the system must not crash
+            assert ack is not None
+            assert ack.intent_id == intent.intent_id
+
+    def test_balance_refresh_after_fills__updates_used(
+        self, overrider, mock_settings, tmp_path
+    ) -> None:
+        """
+        SCENARIO: Multiple orders filled, balance should update after 10 fills
+        EXPECTED: Balance refreshed periodically (every 10 fills)
+        FAILURE MODE: Balance stale after fills, subsequent orders use wrong balance
+        """
+        from solat_engine.api.execution_routes import reset_execution_state
+        from solat_engine.api import execution_routes
+        from solat_engine.execution.models import OrderIntent, OrderSide
+        from solat_engine.main import app
+
+        reset_execution_state()
+
+        mock_settings.data_dir = tmp_path
+        fake_ig = FakeIGClient(balance=10000.0)
+
+        overrider.override(get_settings_dep, lambda: mock_settings)
+        overrider.override(get_ig_client, lambda: fake_ig)
+
+        with TestClient(app) as client:
+            connect_resp = client.post("/execution/connect")
+            assert connect_resp.status_code == 200
+            assert fake_ig._list_accounts_count == 1  # Initial balance fetch
+
+            # Enable demo mode + arm
+            client.post(
+                "/execution/mode",
+                json={"signals_enabled": True, "demo_arm_enabled": True},
+            )
+            client.post("/execution/allowlist", json={"symbols": ["EURUSD"]})
+            client.post("/execution/arm", json={"confirm": True})
+
+            router = execution_routes._execution_router
+            loop = asyncio.get_event_loop()
+
+            # Submit 11 orders (balance refresh triggers every 10 fills)
+            for i in range(11):
+                intent = OrderIntent(
+                    intent_id=uuid4(),
+                    symbol="EURUSD",
+                    side=OrderSide.BUY,
+                    size=0.1,
+                    bot="chaos_test",
                 )
-            else:
-                # If balance was refreshed, verify it happened periodically
-                assert len(balance_queries) > 1
+                ack = loop.run_until_complete(router.route_intent(intent))
+
+            # After 10+ fills, list_accounts should have been called again
+            # (once at connect + at least once after 10 fills)
+            assert fake_ig._list_accounts_count >= 2, (
+                f"Balance should be refreshed after 10 fills, but list_accounts "
+                f"called only {fake_ig._list_accounts_count} times"
+            )

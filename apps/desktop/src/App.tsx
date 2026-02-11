@@ -1,17 +1,26 @@
-import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
+import { useState } from "react";
+import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
 import { StatusScreen } from "./components/StatusScreen";
+import { SplashScreen } from "./components/SplashScreen";
 import { TerminalScreen } from "./screens/TerminalScreen";
 import { BacktestsScreen } from "./screens/BacktestsScreen";
+import { OptimizationScreen } from "./screens/OptimizationScreen";
 import { BlotterScreen } from "./screens/BlotterScreen";
+import { LibraryScreen } from "./screens/LibraryScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { RouteErrorBoundary } from "./components/ErrorBoundary";
+import { StatusStrip } from "./components/StatusStrip";
+import { CommandPalette } from "./components/CommandPalette";
+import { ToastProvider } from "./context/ToastContext";
 import { useEngineHealth } from "./hooks/useEngineHealth";
+import { useEngineLauncher } from "./hooks/useEngineLauncher";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { useHotkeys } from "./hooks/useHotkeys";
 
 function AppContent() {
   const location = useLocation();
+  const navigate = useNavigate();
   const {
     health,
     config,
@@ -23,23 +32,27 @@ function AppContent() {
     manualRetry,
   } = useEngineHealth();
   const { heartbeatCount, isConnected, connectionStatus } = useWebSocket();
-  const [sidecarStarting, setSidecarStarting] = useState(true);
+  const { startEngine, isStarting: isStartingEngine } = useEngineLauncher();
 
-  // Wait a moment for sidecar to start
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSidecarStarting(false);
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, []);
+  // Command palette state
+  const [showPalette, setShowPalette] = useState(false);
+
+  // Global hotkeys
+  const NAV_ROUTES = ["/", "/terminal", "/backtests", "/optimise", "/library", "/blotter", "/settings"];
+  useHotkeys({
+    "Meta+k": () => setShowPalette(true),
+    "Meta+1": () => navigate(NAV_ROUTES[0]),
+    "Meta+2": () => navigate(NAV_ROUTES[1]),
+    "Meta+3": () => navigate(NAV_ROUTES[2]),
+    "Meta+4": () => navigate(NAV_ROUTES[3]),
+    "Meta+5": () => navigate(NAV_ROUTES[4]),
+    "Meta+6": () => navigate(NAV_ROUTES[5]),
+    "Meta+7": () => navigate(NAV_ROUTES[6]),
+    "Escape": () => setShowPalette(false),
+  });
 
   const isTerminal = location.pathname === "/terminal";
   const isFullScreen = isTerminal;
-
-  // Determine effective connection state
-  const effectiveConnectionState = sidecarStarting
-    ? "connecting"
-    : connectionState;
 
   return (
     <div className={`app ${isFullScreen ? "terminal-mode" : ""}`}>
@@ -70,6 +83,18 @@ function AppContent() {
             Backtests
           </Link>
           <Link
+            to="/optimise"
+            className={`nav-link ${location.pathname === "/optimise" ? "active" : ""}`}
+          >
+            Optimise
+          </Link>
+          <Link
+            to="/library"
+            className={`nav-link ${location.pathname === "/library" ? "active" : ""}`}
+          >
+            Library
+          </Link>
+          <Link
             to="/blotter"
             className={`nav-link ${location.pathname === "/blotter" ? "active" : ""}`}
           >
@@ -86,7 +111,7 @@ function AppContent() {
         <div className="connection-status">
           <span
             className={`status-dot ${
-              isConnected ? "connected" : sidecarStarting ? "starting" : "disconnected"
+              isConnected ? "connected" : "disconnected"
             }`}
           />
           <span className="status-text">{connectionStatus}</span>
@@ -94,13 +119,15 @@ function AppContent() {
       </header>
 
       {/* Engine offline warning banner */}
-      {effectiveConnectionState !== "connected" && !isLoading && (
+      {connectionState !== "connected" && !isLoading && (
         <OfflineBanner
-          connectionState={effectiveConnectionState}
+          connectionState={connectionState}
           error={error}
           retryCount={retryCount}
           nextRetryIn={nextRetryIn}
           onRetry={manualRetry}
+          onStartEngine={startEngine}
+          isStartingEngine={isStartingEngine}
         />
       )}
 
@@ -114,37 +141,60 @@ function AppContent() {
                   health={health}
                   config={config}
                   heartbeatCount={heartbeatCount}
-                  isLoading={isLoading || sidecarStarting}
-                  error={sidecarStarting ? null : error}
+                  isLoading={isLoading}
+                  error={error}
                   wsConnected={isConnected}
+                  onStartEngine={startEngine}
+                  isStartingEngine={isStartingEngine}
                 />
               </RouteErrorBoundary>
             }
           />
           <Route path="/terminal" element={<RouteErrorBoundary><TerminalScreen /></RouteErrorBoundary>} />
           <Route path="/backtests" element={<RouteErrorBoundary><BacktestsScreen /></RouteErrorBoundary>} />
+          <Route path="/optimise" element={<RouteErrorBoundary><OptimizationScreen /></RouteErrorBoundary>} />
+          <Route path="/library" element={<RouteErrorBoundary><LibraryScreen /></RouteErrorBoundary>} />
           <Route path="/blotter" element={<RouteErrorBoundary><BlotterScreen /></RouteErrorBoundary>} />
           <Route path="/settings" element={<RouteErrorBoundary><SettingsScreen /></RouteErrorBoundary>} />
         </Routes>
       </main>
 
       {!isTerminal && (
-        <footer className="app-footer">
-          <span>SOLAT Trading Terminal</span>
-          <span className="separator">|</span>
-          <span>Mode: {config?.mode ?? "—"}</span>
-          <span className="separator">|</span>
-          <span>Engine: {health?.version ?? "—"}</span>
-        </footer>
+        <StatusStrip
+          mode={config?.mode ?? null}
+          engineVersion={health?.version ?? null}
+          isConnected={isConnected}
+          currentPath={location.pathname}
+        />
+      )}
+
+      {/* Command Palette */}
+      {showPalette && (
+        <CommandPalette
+          onClose={() => setShowPalette(false)}
+          onNavigate={(path) => {
+            navigate(path);
+            setShowPalette(false);
+          }}
+        />
       )}
     </div>
   );
 }
 
 function App() {
+  const [booted, setBooted] = useState(false);
+  const { startEngine } = useEngineLauncher();
+
+  if (!booted) {
+    return <SplashScreen onReady={() => setBooted(true)} onStartEngine={startEngine} />;
+  }
+
   return (
     <BrowserRouter>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </BrowserRouter>
   );
 }

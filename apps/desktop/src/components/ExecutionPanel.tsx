@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useExecutionStatus } from "../hooks/useExecutionStatus";
+import { useExecutionMode } from "../hooks/useExecutionMode";
+import { InfoTip } from "./InfoTip";
 
 interface ExecutionPanelProps {
   igConfigured: boolean;
@@ -17,6 +19,11 @@ export function ExecutionPanel({ igConfigured }: ExecutionPanelProps) {
     activateKillSwitch,
     resetKillSwitch,
   } = useExecutionStatus();
+  const {
+    mode: modeFlags,
+    setSignalsEnabled,
+    setDemoArmEnabled,
+  } = useExecutionMode();
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [isActioning, setIsActioning] = useState(false);
@@ -138,6 +145,38 @@ export function ExecutionPanel({ igConfigured }: ExecutionPanelProps) {
           <span className="pnl-label">PnL Today</span>
         </div>
       </div>
+
+      {/* Mode Flags */}
+      {modeFlags && (
+        <div className="execution-mode-flags">
+          <div className="mode-flag">
+            <label className="mode-flag-label">
+              <input
+                type="checkbox"
+                checked={modeFlags.signals_enabled}
+                onChange={(e) => setSignalsEnabled(e.target.checked)}
+              />
+              <span>Signals Enabled</span>
+              <InfoTip text="When enabled, strategies generate signals on incoming bars. Disable to pause signal generation without disconnecting." />
+            </label>
+          </div>
+          <div className="mode-flag">
+            <label className="mode-flag-label">
+              <input
+                type="checkbox"
+                checked={modeFlags.demo_arm_enabled}
+                onChange={(e) => setDemoArmEnabled(e.target.checked)}
+                disabled={modeFlags.mode !== "DEMO"}
+              />
+              <span>DEMO Arm</span>
+              <InfoTip text="Enable DEMO arm to allow run-once orders and autopilot execution in DEMO mode. This is required before arming or sending manual orders." />
+            </label>
+            {modeFlags.mode !== "DEMO" && (
+              <span className="mode-flag-note">DEMO mode only</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Error Display */}
       {(actionError || status.last_error) && (

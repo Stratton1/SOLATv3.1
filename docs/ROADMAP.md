@@ -247,6 +247,74 @@ apps/desktop/src/
 
 ---
 
+### PROMPT 020: Close the Loop ✅
+
+End-to-end pipeline: WFO → recommended set → allowlist → autopilot execution.
+
+- [x] **RecommendedSet model + manager**
+  - [x] Generate from WFO results via ComboSelector
+  - [x] Persist JSON in `data/optimization/recommendations/`
+  - [x] Apply to allowlist (DEMO only, fail-closed on LIVE)
+  - [x] Status lifecycle: pending → applied / superseded
+  - [x] Markdown summary generation
+
+- [x] **Recommendation API routes**
+  - [x] `POST /optimization/recommendations/generate`
+  - [x] `GET /optimization/recommendations/latest`
+  - [x] `GET /optimization/recommendations/{id}`
+  - [x] `GET /optimization/recommendations`
+  - [x] `POST /optimization/recommendations/{id}/apply-demo`
+
+- [x] **Autopilot service (event-driven)**
+  - [x] Subscribes to `BAR_RECEIVED` events
+  - [x] Matches bars to allowlist entries
+  - [x] Runs Elite 8 strategies per-combo
+  - [x] Routes OrderIntents through ExecutionRouter
+  - [x] Rate limiting + per-combo cooldown
+  - [x] Bounded bar buffers (deques)
+  - [x] DEMO-only, fail-closed on LIVE
+
+- [x] **Autopilot API routes**
+  - [x] `GET /autopilot/status`
+  - [x] `POST /autopilot/enable`
+  - [x] `POST /autopilot/disable`
+  - [x] `GET /autopilot/combos`
+
+- [x] **UI updates**
+  - [x] Recommendations card in Optimisation screen
+  - [x] Grouped combo list by symbol
+  - [x] Autopilot card on Status screen
+  - [x] Flash-on-change animation for numeric values
+  - [x] Enhanced empty states (Blotter, Backtests)
+
+- [x] **Event bus extensions**
+  - [x] `RECOMMENDATION_GENERATED`, `RECOMMENDATION_APPLIED`
+  - [x] `AUTOPILOT_ENABLED`, `AUTOPILOT_DISABLED`, `AUTOPILOT_SIGNAL`
+
+### Key Files
+```
+engine/solat_engine/optimization/
+└── recommended_set.py    # RecommendedSet model + manager
+
+engine/solat_engine/autopilot/
+├── __init__.py
+└── service.py            # AutopilotService (event-driven)
+
+engine/solat_engine/api/
+├── recommendation_routes.py  # Recommendation endpoints
+└── autopilot_routes.py       # Autopilot endpoints
+
+apps/desktop/src/
+├── hooks/
+│   ├── useRecommendations.ts
+│   ├── useAutopilot.ts
+│   └── useFlashOnChange.ts
+└── screens/
+    └── OptimizationScreen.tsx  # Recommendations card
+```
+
+---
+
 ## Known Issues (as of PROMPT 012)
 
 - Backtest endpoints emit 4 `RuntimeWarning: coroutine was never awaited` warnings (cosmetic; progress callbacks in tests)
@@ -256,17 +324,61 @@ apps/desktop/src/
 
 ---
 
-## Phase 070-079: Hardening 🔲
+## Phase 070-079: Hardening 🚧
 
 **Objective**: Prepare for production use
 
-### Deliverables
-- [ ] Chaos testing
-  - [ ] Disconnect handling
-  - [ ] Partial fills
-  - [ ] Order rejects
-  - [ ] Rate limit recovery
-  - [ ] Stale stream detection
+### PROMPT 022: Chaos Testing Suite ✅
+
+**Objective**: Validate system handles critical failures gracefully before LIVE trading
+
+**Tests Implemented (12 scenarios)**:
+- Tier 1 (Data Corruption - BLOCKER):
+  - Disk full during ledger write
+  - Snapshot write failures
+  - Stale account balance in risk checks
+  - Ledger corruption recovery
+- Tier 2 (State Inconsistency):
+  - Partial position closes
+  - Duplicate fills / idempotency
+  - Reconciliation failures
+  - Balance refresh after fills
+- Tier 4 (Recovery):
+  - Kill switch persistence across restarts
+  - Snapshot memory leak verification
+
+**Bugs Fixed**:
+- ✅ Account balance now refreshes after every 10 fills (was: fetched once at connect)
+- ✅ Position snapshot list cleared after flush (was: unbounded memory growth)
+- ✅ Kill switch state persisted to disk and restored on startup (was: lost on restart)
+
+**Test Suite Status**:
+- 651 existing tests PASS (no regressions)
+- 12 new chaos tests added
+- Total: **663 tests**
+
+**Key Files**:
+```
+engine/tests/chaos/
+├── fixtures/               # Reusable chaos simulators
+│   ├── broker_chaos.py     # Timeouts, partial fills, stale data
+│   ├── disk_chaos.py       # Disk full, partial writes
+│   └── network_chaos.py    # Connection errors, 429 rate limits
+├── tier1_data_corruption/  # 5 tests (BLOCKER)
+├── tier2_state_inconsistency/  # 5 tests
+└── tier4_recovery/         # 2 tests
+```
+
+**Running Tests**:
+```bash
+# All Tier 1 (data corruption - must pass before LIVE)
+python3 -m pytest tests/chaos/tier1_data_corruption/ -v -m tier1
+
+# Full chaos suite
+python3 -m pytest tests/chaos/ -v -m chaos
+```
+
+### Remaining Deliverables
 - [ ] Health report panel
 - [ ] Automated alerts
 - [ ] Application packaging

@@ -71,6 +71,11 @@ class ExecutionRouter:
         # Initialize components
         self._risk_engine = RiskEngine(config)
         self._kill_switch = KillSwitch(config)
+
+        # Restore kill switch state from disk (if exists)
+        kill_switch_state_file = data_dir / "execution" / "kill_switch_state.json"
+        self._kill_switch.restore_state(kill_switch_state_file)
+
         self._position_store = PositionStore()
 
         # Safety guard (idempotency, circuit breaker, size caps)
@@ -100,6 +105,8 @@ class ExecutionRouter:
         # Daily stats
         self._realized_pnl_today: float = 0.0
         self._account_balance: float = 0.0
+        self._balance_last_updated: datetime | None = None
+        self._fills_since_balance_refresh: int = 0
 
     @property
     def state(self) -> ExecutionState:
@@ -166,6 +173,7 @@ class ExecutionRouter:
             self._state.account_id = account.get("accountId", account.get("account_id"))
             self._state.account_balance = float(account.get("balance", {}).get("balance", 0))
             self._account_balance = self._state.account_balance
+            self._balance_last_updated = datetime.now(UTC)
 
             # Update state
             self._state.connected = True
@@ -259,6 +267,42 @@ class ExecutionRouter:
 
         logger.info("Disconnected from broker")
         return {"ok": True}
+
+    async def _refresh_account_balance(self) -> None:
+        """
+        Refresh account balance from broker.
+
+        Called periodically to keep balance up-to-date:
+        - After every N fills
+        - Before risk checks if balance is stale (> 5 minutes)
+        """
+        if self._broker_adapter is None:
+            logger.warning("Cannot refresh balance: not connected to broker")
+            return
+
+        try:
+            accounts = await self._broker_adapter.list_accounts()
+            if accounts:
+                balance = float(accounts[0].get("balance", {}).get("balance", 0))
+                old_balance = self._account_balance
+
+                self._account_balance = balance
+                self._state.account_balance = balance
+                self._balance_last_updated = datetime.now(UTC)
+                self._fills_since_balance_refresh = 0
+
+                if abs(balance - old_balance) > 0.01:  # Log only if changed
+                    logger.info(
+                        "Account balance refreshed: %.2f -> %.2f (delta: %.2f)",
+                        old_balance,
+                        balance,
+                        balance - old_balance,
+                    )
+                else:
+                    logger.debug("Account balance refreshed: %.2f (no change)", balance)
+
+        except Exception as e:
+            logger.warning("Failed to refresh account balance: %s", e)
 
     async def arm(self, confirm: bool = False, live_mode: bool = False) -> dict[str, Any]:
         """
@@ -369,6 +413,10 @@ class ExecutionRouter:
             # Record in ledger
             self._ledger.record_kill_switch(activated=True, reason=reason, by="user")
 
+            # Persist kill switch state to disk
+            kill_switch_state_file = self._data_dir / "execution" / "kill_switch_state.json"
+            self._kill_switch.save_state(kill_switch_state_file)
+
             await self._emit_event({
                 "type": "kill_switch_activated",
                 "reason": reason,
@@ -418,6 +466,10 @@ class ExecutionRouter:
             self._state.kill_switch_active = False
 
             self._ledger.record_kill_switch(activated=False, reason="reset", by="user")
+
+            # Persist kill switch state to disk (inactive)
+            kill_switch_state_file = self._data_dir / "execution" / "kill_switch_state.json"
+            self._kill_switch.save_state(kill_switch_state_file)
 
             await self._emit_event({
                 "type": "kill_switch_reset",
@@ -527,6 +579,16 @@ class ExecutionRouter:
                 rejection_reason=kill_reason,
             )
 
+        # Check if balance is stale (> 5 minutes) and refresh if needed
+        if self._balance_last_updated is not None:
+            balance_age_seconds = (datetime.now(UTC) - self._balance_last_updated).total_seconds()
+            if balance_age_seconds > 300:  # 5 minutes
+                logger.warning(
+                    "Account balance is stale (%.0f seconds old), refreshing before risk check",
+                    balance_age_seconds,
+                )
+                await self._refresh_account_balance()
+
         # Validate through risk engine
         risk_result = self._risk_engine.check_intent(
             intent,
@@ -560,6 +622,15 @@ class ExecutionRouter:
                 "Size adjusted: %s -> %s",
                 risk_result.original_size,
                 risk_result.adjusted_size,
+            )
+
+        # DEMO mode: require demo_arm_enabled for order submission
+        if self._state.mode == ExecutionMode.DEMO and not self._state.demo_arm_enabled:
+            logger.debug("DEMO arm not enabled, intent recorded but not submitted")
+            return OrderAck(
+                intent_id=intent.intent_id,
+                status=OrderStatus.PENDING,
+                rejection_reason="DEMO arm not enabled - intent recorded only",
             )
 
         # Check if armed and connected
@@ -627,6 +698,12 @@ class ExecutionRouter:
                 self._state.trades_this_hour = self._risk_engine.get_trades_this_hour()
                 # Record success with safety guard
                 self._safety_guard.record_order_success(intent.intent_id, result)
+
+                # Update fill counter and refresh balance if threshold reached
+                self._fills_since_balance_refresh += 1
+                if self._fills_since_balance_refresh >= 10:
+                    # Refresh balance from broker every 10 fills
+                    await self._refresh_account_balance()
 
             ack = OrderAck(
                 intent_id=intent.intent_id,
@@ -763,6 +840,24 @@ class ExecutionRouter:
     def get_positions(self) -> list[PositionView]:
         """Get current positions."""
         return self._position_store.positions
+
+    async def set_signals_enabled(self, enabled: bool) -> None:
+        """Toggle signal generation on/off."""
+        self._state.signals_enabled = enabled
+        await self._emit_event({
+            "type": "execution_mode_changed",
+            "signals_enabled": enabled,
+        })
+        logger.info("Signals %s", "enabled" if enabled else "disabled")
+
+    async def set_demo_arm_enabled(self, enabled: bool) -> None:
+        """Toggle DEMO arm on/off."""
+        self._state.demo_arm_enabled = enabled
+        await self._emit_event({
+            "type": "execution_mode_changed",
+            "demo_arm_enabled": enabled,
+        })
+        logger.info("DEMO arm %s", "enabled" if enabled else "disabled")
 
     def update_config(self, config: ExecutionConfig) -> None:
         """Update configuration."""

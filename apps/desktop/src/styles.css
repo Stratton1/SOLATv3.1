@@ -97,12 +97,13 @@ body {
     "header header header"
     "left-col mid-col right-col";
   grid-template-columns: 320px 1fr 320px;
-  grid-template-rows: auto 1fr;
-  height: 100%;
+  grid-template-rows: 40px 1fr;
+  height: 100vh;
   width: 100%;
-  gap: 12px;
-  padding: 12px;
+  gap: 8px;
+  padding: 8px;
   overflow: hidden;
+  background-color: var(--bg-app);
 }
 
 /* Suppress .app-main scroll+padding when status dashboard fills it */
@@ -118,9 +119,8 @@ body {
   align-items: center;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
-  padding: 8px 16px;
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow);
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 
@@ -128,7 +128,7 @@ body {
   grid-area: left-col;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-height: 0;
   overflow-y: auto;
 }
@@ -137,7 +137,7 @@ body {
   grid-area: mid-col;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-height: 0;
   overflow: hidden;
   min-width: 0; /* Prevent horizontal blowout */
@@ -147,7 +147,7 @@ body {
   grid-area: right-col;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-height: 0;
   overflow-y: auto;
 }
@@ -169,7 +169,7 @@ body {
 .terminal-card {
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -179,7 +179,7 @@ body {
 .terminal-card-header {
   background: var(--status-panel-header);
   border-bottom: 1px solid var(--border-color);
-  padding: 6px 12px;
+  padding: 4px 10px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -793,6 +793,17 @@ body {
   font-size: 12px;
   color: var(--accent-red);
   margin-bottom: 16px;
+}
+
+.execution-hint {
+  font-size: 11px;
+  color: var(--accent-yellow);
+  background: rgba(234, 179, 8, 0.08);
+  border: 1px solid rgba(234, 179, 8, 0.2);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-top: 8px;
+  line-height: 1.4;
 }
 
 /* Control Buttons */
@@ -5699,6 +5710,36 @@ body {
     "Helvetica Neue", Arial, sans-serif;
 }
 
+/* Portal-rendered infotip (avoids clipping by overflow containers) */
+.infotip-popover-portal {
+  position: fixed;
+  z-index: 10001;
+  width: 280px;
+  padding: 10px 14px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  animation: infotip-fade-in 0.15s ease;
+  pointer-events: auto;
+}
+
+.infotip-popover-portal.infotip-top {
+  transform: translate(-50%, -100%);
+}
+
+.infotip-popover-portal.infotip-bottom {
+  transform: translateX(-50%);
+}
+
+.infotip-popover-portal.infotip-left {
+  transform: translate(-100%, -50%);
+}
+
+.infotip-popover-portal.infotip-right {
+  transform: translateY(-50%);
+}
+
 /* =============================================================================
    Blotter Toast
    ============================================================================= */
@@ -6924,6 +6965,13 @@ body {
 .checklist-desc {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.checklist-hint {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 /* Inline Reveal button */

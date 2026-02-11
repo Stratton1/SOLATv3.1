@@ -238,22 +238,22 @@ _signals_cache: ResponseCache | None = None
 
 
 def get_overlay_rate_limiter() -> APIRateLimiter:
-    """Get overlay rate limiter (1 req/sec)."""
+    """Get overlay rate limiter (4 req/sec)."""
     global _overlay_rate_limiter
     if _overlay_rate_limiter is None:
         _overlay_rate_limiter = APIRateLimiter(
-            requests_per_second=1.0,
+            requests_per_second=4.0,
             name="overlay",
         )
     return _overlay_rate_limiter
 
 
 def get_signals_rate_limiter() -> APIRateLimiter:
-    """Get signals rate limiter (1 req/sec)."""
+    """Get signals rate limiter (4 req/sec)."""
     global _signals_rate_limiter
     if _signals_rate_limiter is None:
         _signals_rate_limiter = APIRateLimiter(
-            requests_per_second=1.0,
+            requests_per_second=4.0,
             name="signals",
         )
     return _signals_rate_limiter

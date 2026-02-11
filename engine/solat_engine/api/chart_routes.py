@@ -11,7 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from solat_engine.api.data_routes import get_parquet_store
+from solat_engine.api.data_routes import get_parquet_store, get_settings
 from solat_engine.api.rate_limit import (
     get_overlay_cache,
     get_overlay_rate_limiter,
@@ -35,6 +35,11 @@ from solat_engine.strategies.indicators import (
 
 router = APIRouter(prefix="/chart", tags=["Chart"])
 logger = get_logger(__name__)
+
+
+def get_chart_store() -> ParquetStore:
+    """Wrapper dependency so tests can patch chart store at call time."""
+    return get_parquet_store(get_settings())
 
 
 # =============================================================================
@@ -307,12 +312,12 @@ def compute_indicator(
 async def compute_overlays(
     request: OverlayRequest,
     http_request: Request,
-    store: ParquetStore = Depends(get_parquet_store),
+    store: ParquetStore = Depends(get_chart_store),
 ) -> OverlayResponse:
     """
     Compute chart overlays (indicators) for given bars.
 
-    Rate limited: 1 request/sec, cached for 5s.
+    Rate limited: 4 requests/sec, cached for 5s.
 
     Supports:
     - EMA/SMA with configurable period (e.g., ema_20, sma_50)
@@ -365,6 +370,16 @@ async def compute_overlays(
         end=request.end,
         limit=request.limit,
     )
+
+    # In tests/local fixtures we may only have raw symbol keys.
+    if not bars and storage_symbol != request.symbol:
+        bars = store.read_bars(
+            symbol=request.symbol,
+            timeframe=tf,
+            start=request.start,
+            end=request.end,
+            limit=request.limit,
+        )
 
     if not bars:
         return OverlayResponse(
@@ -433,12 +448,12 @@ async def get_overlays(
         description="Comma-separated indicators",
     ),
     limit: int = Query(default=500, ge=50, le=2000),
-    store: ParquetStore = Depends(get_parquet_store),
+    store: ParquetStore = Depends(get_chart_store),
 ) -> OverlayResponse:
     """
     GET version of overlay computation.
 
-    Rate limited: 1 request/sec, cached for 5s.
+    Rate limited: 4 requests/sec, cached for 5s.
     """
     indicator_list = [i.strip() for i in indicators.split(",") if i.strip()]
 
@@ -460,7 +475,7 @@ async def get_signals(
     """
     Get signal markers (entry/exit points) for chart display.
 
-    Rate limited: 1 request/sec, cached for 10s.
+    Rate limited: 4 requests/sec, cached for 10s.
 
     Returns executed trades as markers for visualization.
     Integrates with backtest results and live execution history.
@@ -509,7 +524,7 @@ async def get_signals_simple(
     """
     GET version of signals query.
 
-    Rate limited: 1 request/sec, cached for 10s.
+    Rate limited: 4 requests/sec, cached for 10s.
     """
     request = SignalsRequest(
         symbol=symbol,

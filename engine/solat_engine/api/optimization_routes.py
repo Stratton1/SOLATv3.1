@@ -38,7 +38,7 @@ def get_walk_forward_engine(
 ) -> WalkForwardEngine:
     """Get or create walk-forward engine singleton."""
     global _walk_forward_engine
-    if _walk_forward_engine is None or _walk_forward_engine.store != store:
+    if _walk_forward_engine is None or _walk_forward_engine.parquet_store != store:
         _walk_forward_engine = WalkForwardEngine(parquet_store=store)
     return _walk_forward_engine
 
@@ -200,15 +200,17 @@ async def start_walk_forward(
         min_sharpe=request.min_sharpe,
     )
 
-    # Start async run (fire and forget pattern - caller polls for results)
+    # Generate run_id up front so we can return it immediately
     import asyncio
-    asyncio.create_task(engine.run(config))
+    import uuid
+    run_id = f"wf-{uuid.uuid4().hex[:8]}"
 
-    # Return immediately with a stub result
-    # The actual result will be available when polling
+    # Start async run (fire and forget pattern - caller polls for results)
+    asyncio.create_task(engine.run(config, run_id=run_id))
+
     return WalkForwardResponse(
         ok=True,
-        run_id="wf-pending",  # Will be replaced when task starts
+        run_id=run_id,
         message=f"Walk-forward starting for {len(request.symbols)} symbols, {len(request.bots)} bots",
         status="starting",
     )
@@ -261,6 +263,108 @@ async def get_walk_forward_result(
 
 
 # =============================================================================
+# Selector Routes
+# =============================================================================
+
+
+class SelectorRequest(BaseModel):
+    """Request to run combo selector."""
+
+    wfo_run_id: str = Field(..., description="Walk-forward run ID to select from")
+    max_combos: int = Field(default=15, ge=1, le=50)
+    max_per_symbol: int = Field(default=3, ge=1)
+    max_per_bot: int = Field(default=5, ge=1)
+    min_oos_sharpe: float = Field(default=0.3)
+    min_oos_trades: int = Field(default=20, ge=1)
+    min_folds_profitable_pct: float = Field(default=0.5, ge=0, le=1)
+    max_sharpe_cv: float = Field(default=2.0, ge=0)
+
+
+class SelectedComboResponse(BaseModel):
+    """Selected combo in response."""
+
+    symbol: str
+    bot: str
+    timeframe: str
+    rank: int
+    metrics: dict[str, Any]
+    rationale: str
+
+
+class SelectorResponse(BaseModel):
+    """Response from combo selector."""
+
+    ok: bool = True
+    selected: list[SelectedComboResponse] = Field(default_factory=list)
+    rejected_count: int = 0
+    constraints: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/selector/run", response_model=SelectorResponse)
+async def run_selector(
+    request: SelectorRequest,
+    engine: WalkForwardEngine = Depends(get_walk_forward_engine),
+) -> SelectorResponse:
+    """
+    Run combo selector on walk-forward results.
+
+    Filters, ranks, and diversifies combos from a completed WFO run.
+    """
+    from solat_engine.optimization.selector import ComboSelector, SelectionConstraints
+
+    result = engine.get_result(request.wfo_run_id)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Walk-forward run '{request.wfo_run_id}' not found",
+        )
+
+    if result.status != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Walk-forward run not completed (status: {result.status})",
+        )
+
+    constraints = SelectionConstraints(
+        max_combos=request.max_combos,
+        max_per_symbol=request.max_per_symbol,
+        max_per_bot=request.max_per_bot,
+        min_oos_sharpe=request.min_oos_sharpe,
+        min_oos_trades=request.min_oos_trades,
+        min_folds_profitable_pct=request.min_folds_profitable_pct,
+        max_sharpe_cv=request.max_sharpe_cv,
+    )
+
+    selector = ComboSelector()
+    sel_result = selector.select(result, constraints)
+
+    return SelectorResponse(
+        ok=True,
+        selected=[
+            SelectedComboResponse(
+                symbol=s.symbol,
+                bot=s.bot,
+                timeframe=s.timeframe,
+                rank=s.rank,
+                metrics=s.metrics,
+                rationale=s.rationale,
+            )
+            for s in sel_result.selected
+        ],
+        rejected_count=len(sel_result.rejected),
+        constraints={
+            "max_combos": constraints.max_combos,
+            "max_per_symbol": constraints.max_per_symbol,
+            "max_per_bot": constraints.max_per_bot,
+            "min_oos_sharpe": constraints.min_oos_sharpe,
+            "min_oos_trades": constraints.min_oos_trades,
+            "min_folds_profitable_pct": constraints.min_folds_profitable_pct,
+            "max_sharpe_cv": constraints.max_sharpe_cv,
+        },
+    )
+
+
+# =============================================================================
 # Allowlist Routes
 # =============================================================================
 
@@ -309,6 +413,19 @@ async def get_allowlist_entries(
         )
         for e in entries
     ]
+
+
+@router.get("/allowlist/grouped")
+async def get_allowlist_grouped(
+    manager: AllowlistManager = Depends(get_allowlist_manager),
+) -> list[dict]:
+    """
+    Get allowlist entries grouped by symbol.
+
+    Returns entries organised by symbol with their bots and timeframes,
+    suitable for the grouped UI display.
+    """
+    return manager.get_grouped()
 
 
 @router.post("/allowlist/update")
@@ -442,3 +559,75 @@ async def clear_allowlist(
     manager.clear()
 
     return {"ok": True, "message": "Allowlist cleared"}
+
+
+# =============================================================================
+# Scheduler & Proposal Routes
+# =============================================================================
+
+_scheduler_service = None
+
+
+def get_scheduler_service():
+    """Get the global scheduler service (set by main.py lifespan)."""
+    global _scheduler_service
+    return _scheduler_service
+
+
+def set_scheduler_service(svc) -> None:
+    """Set the global scheduler service (called from main.py lifespan)."""
+    global _scheduler_service
+    _scheduler_service = svc
+
+
+@router.get("/scheduler/status")
+async def get_scheduler_status() -> dict[str, Any]:
+    """Get scheduler status — job status, next run times."""
+    svc = get_scheduler_service()
+    if svc is None:
+        return {"running": False, "jobs": {}, "proposals_count": 0, "pending_proposals": 0}
+    return svc.get_status()
+
+
+@router.get("/proposals")
+async def list_proposals() -> list[dict[str, Any]]:
+    """List all proposals, newest first."""
+    svc = get_scheduler_service()
+    if svc is None:
+        return []
+    return [p.to_dict() for p in svc.list_proposals()]
+
+
+@router.get("/proposals/{proposal_id}")
+async def get_proposal(proposal_id: str) -> dict[str, Any]:
+    """Get a single proposal by ID."""
+    svc = get_scheduler_service()
+    if svc is None:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    proposal = svc.get_proposal(proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail=f"Proposal '{proposal_id}' not found")
+
+    return proposal.to_dict()
+
+
+@router.post("/deploy/proposal/{proposal_id}/apply")
+async def apply_proposal(proposal_id: str) -> dict[str, Any]:
+    """
+    Apply a proposal to the allowlist.
+
+    Safety: Only works in DEMO mode. Blocked in LIVE.
+    """
+    svc = get_scheduler_service()
+    if svc is None:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
+
+    proposal = svc.apply_proposal(proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail=f"Proposal '{proposal_id}' not found")
+
+    if proposal.status == "rejected":
+        raise HTTPException(status_code=403, detail=proposal.message)
+
+    return proposal.to_dict()

@@ -25,6 +25,8 @@ from solat_engine.api.execution_routes import router as execution_router
 from solat_engine.api.ig_routes import router as ig_router
 from solat_engine.api.market_data_routes import router as market_data_router
 from solat_engine.api.optimization_routes import router as optimization_router
+from solat_engine.api.autopilot_routes import router as autopilot_router
+from solat_engine.api.recommendation_routes import router as recommendation_router
 from solat_engine.config import Settings, get_settings, get_settings_dep
 from solat_engine.logging import get_logger, setup_logging
 from solat_engine.runtime.event_bus import Event, EventType, get_event_bus
@@ -67,6 +69,10 @@ class ConfigResponse(BaseModel):
     data_dir: str
     app_env: str
     ig_configured: bool
+    bars_path: str = ""
+    backtests_path: str = ""
+    sweeps_path: str = ""
+    proposals_path: str = ""
 
 
 class HeartbeatMessage(BaseModel):
@@ -151,6 +157,24 @@ async def lifespan(app: FastAPI):
 
     # Start heartbeat task
     state.heartbeat_task = asyncio.create_task(heartbeat_loop())
+
+    # Start scheduler service
+    from solat_engine.scheduler.service import SchedulerService
+    from solat_engine.api.optimization_routes import set_scheduler_service
+    scheduler = SchedulerService()
+    await scheduler.start()
+    set_scheduler_service(scheduler)
+    state.scheduler = scheduler
+
+    # Initialise autopilot service
+    from solat_engine.autopilot.service import AutopilotService, set_autopilot_service
+    from solat_engine.api.optimization_routes import get_allowlist_manager
+    autopilot_svc = AutopilotService(
+        execution_router=None,  # Will be connected when execution routes init
+        allowlist_mgr=get_allowlist_manager(),
+        settings=settings,
+    )
+    set_autopilot_service(autopilot_svc)
 
     # Set WS clients reference for diagnostics
     set_ws_clients_ref(state.websocket_clients)
@@ -290,10 +314,66 @@ async def lifespan(app: FastAPI):
     await event_bus.subscribe(EventType.BROKER_CONNECTED, forward_market_data_events)
     await event_bus.subscribe(EventType.BROKER_DISCONNECTED, forward_market_data_events)
 
+    # Subscribe to recommendation + autopilot events for WS forwarding
+    async def forward_recommendation_events(event: Event) -> None:
+        """Forward recommendation/autopilot events to WebSocket clients."""
+        message = {
+            "type": event.type.value,
+            "timestamp": event.timestamp.isoformat(),
+            **event.data,
+        }
+        disconnected: list[WebSocket] = []
+        for ws in state.websocket_clients:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                disconnected.append(ws)
+        for ws in disconnected:
+            if ws in state.websocket_clients:
+                state.websocket_clients.remove(ws)
+
+    # Subscribe to derive events for WS forwarding
+    async def forward_derive_events(event: Event) -> None:
+        """Forward derive events to WebSocket clients."""
+        message = {
+            "type": event.type.value,
+            "run_id": event.run_id,
+            "timestamp": event.timestamp.isoformat(),
+            **event.data,
+        }
+        disconnected: list[WebSocket] = []
+        for ws in state.websocket_clients:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                disconnected.append(ws)
+        for ws in disconnected:
+            if ws in state.websocket_clients:
+                state.websocket_clients.remove(ws)
+
+    await event_bus.subscribe(EventType.DERIVE_STARTED, forward_derive_events)
+    await event_bus.subscribe(EventType.DERIVE_PROGRESS, forward_derive_events)
+    await event_bus.subscribe(EventType.DERIVE_COMPLETED, forward_derive_events)
+
+    await event_bus.subscribe(EventType.RECOMMENDATION_GENERATED, forward_recommendation_events)
+    await event_bus.subscribe(EventType.RECOMMENDATION_APPLIED, forward_recommendation_events)
+    await event_bus.subscribe(EventType.AUTOPILOT_ENABLED, forward_recommendation_events)
+    await event_bus.subscribe(EventType.AUTOPILOT_DISABLED, forward_recommendation_events)
+    await event_bus.subscribe(EventType.AUTOPILOT_SIGNAL, forward_recommendation_events)
+
     yield
 
     # Shutdown
     logger.info("Shutting down SOLAT Engine")
+
+    # Disable autopilot if enabled
+    if autopilot_svc and autopilot_svc._enabled:
+        await autopilot_svc.disable()
+    set_autopilot_service(None)
+
+    # Stop scheduler
+    if hasattr(state, "scheduler") and state.scheduler:
+        await state.scheduler.stop()
 
     # Cancel heartbeat task
     if state.heartbeat_task:
@@ -349,6 +429,8 @@ app.include_router(market_data_router)
 app.include_router(chart_router)
 app.include_router(diagnostics_router)
 app.include_router(optimization_router)
+app.include_router(recommendation_router)
+app.include_router(autopilot_router)
 
 
 # =============================================================================
@@ -475,12 +557,17 @@ async def config(
 
     Sensitive values are not exposed.
     """
+    data_dir = settings.data_dir
     return ConfigResponse(
         mode=settings.mode.value,
         env=settings.env.value,
-        data_dir=str(settings.data_dir),
+        data_dir=str(data_dir),
         app_env=settings.env.value,
         ig_configured=settings.has_ig_credentials,
+        bars_path=str(data_dir / "parquet" / "bars"),
+        backtests_path=str(data_dir / "backtests"),
+        sweeps_path=str(data_dir / "sweep_results"),
+        proposals_path=str(data_dir / "proposals"),
     )
 
 

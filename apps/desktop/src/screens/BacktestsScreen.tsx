@@ -13,12 +13,15 @@ import { useBacktestRuns } from "../hooks/useBacktestRuns";
 import { BacktestRunSummary } from "../lib/engineClient";
 import { BacktestRunViewer } from "../components/backtest/BacktestRunViewer";
 import { BacktestComparison } from "../components/backtest/BacktestComparison";
+import { BacktestWizard } from "../components/backtest/BacktestWizard";
+import { InfoTip } from "../components/InfoTip";
 
 export function BacktestsScreen() {
   const { runs, isLoading, error, refetch } = useBacktestRuns();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [compareRunIds, setCompareRunIds] = useState<Set<string>>(new Set());
   const [showComparison, setShowComparison] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
 
   const toggleCompare = useCallback(
     (runId: string) => {
@@ -48,9 +51,13 @@ export function BacktestsScreen() {
   if (isLoading) {
     return (
       <div className="backtests-screen">
-        <div className="loading-container">
-          <div className="loading-spinner" />
-          <span className="loading-text">Loading backtest runs...</span>
+        <div style={{ padding: "20px" }}>
+          <div className="skeleton skeleton-row" style={{ width: "40%", height: 24, marginBottom: 16 }} />
+          <div className="skeleton skeleton-row" />
+          <div className="skeleton skeleton-row" />
+          <div className="skeleton skeleton-row" />
+          <div className="skeleton skeleton-row" />
+          <div className="skeleton skeleton-row" />
         </div>
       </div>
     );
@@ -93,8 +100,18 @@ export function BacktestsScreen() {
   return (
     <div className="backtests-screen">
       <div className="backtests-header">
-        <h2>Backtest Runs</h2>
+        <h2>
+          Backtest Runs
+          <InfoTip text="Backtests replay historical bar data through your strategies to evaluate performance. Each run shows Sharpe ratio, trade count, and total return. Select multiple runs (up to 5) to compare side-by-side." />
+        </h2>
         <div className="backtests-header-actions">
+          <button
+            className="wizard-btn primary"
+            style={{ padding: "6px 14px", fontSize: 13 }}
+            onClick={() => setShowWizard(true)}
+          >
+            New Backtest
+          </button>
           {compareRunIds.size >= 2 && (
             <button
               className="compare-btn"
@@ -116,10 +133,23 @@ export function BacktestsScreen() {
 
       {runs.length === 0 ? (
         <div className="backtests-empty">
-          <p>No backtest runs yet</p>
-          <span className="hint">
-            Run a backtest from the Strategy drawer to see results here
-          </span>
+          <p className="backtests-empty-title">No backtest runs yet</p>
+          <p className="backtests-empty-hint">
+            Run your first backtest to evaluate strategy performance on
+            historical data. Click "New Backtest" above, or open the Terminal
+            and use the Strategy drawer.
+          </p>
+          <p className="backtests-empty-hint">
+            You can also run backtests from the command line using the grand
+            sweep script for bulk testing across all symbols and timeframes.
+          </p>
+          <button
+            className="wizard-btn primary"
+            style={{ marginTop: 12 }}
+            onClick={() => setShowWizard(true)}
+          >
+            Run Your First Backtest
+          </button>
         </div>
       ) : (
         <div className="backtests-list">
@@ -146,6 +176,18 @@ export function BacktestsScreen() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Backtest Wizard */}
+      {showWizard && (
+        <BacktestWizard
+          onClose={() => setShowWizard(false)}
+          onComplete={(runId) => {
+            setShowWizard(false);
+            refetch();
+            setSelectedRunId(runId);
+          }}
+        />
       )}
     </div>
   );

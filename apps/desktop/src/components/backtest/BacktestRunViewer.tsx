@@ -103,6 +103,34 @@ export function BacktestRunViewer({ runId, onBack }: BacktestRunViewerProps) {
     );
   }
 
+  // Handle failed backtests (ok: false)
+  if (!results.ok) {
+    return (
+      <div className="backtest-viewer">
+        <div className="viewer-header">
+          <button className="back-btn" onClick={onBack}>
+            ← Back
+          </button>
+          <h2>Run: {runId}</h2>
+        </div>
+        <div className="error-container">
+          <span className="error-title">Backtest Failed</span>
+          {results.errors && results.errors.length > 0 ? (
+            <div style={{ marginTop: "1rem" }}>
+              {results.errors.map((err, idx) => (
+                <div key={idx} className="error-message" style={{ marginBottom: "0.5rem" }}>
+                  {err}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span className="error-message">No error details available</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="backtest-viewer">
       <div className="viewer-header">
@@ -272,24 +300,47 @@ function TradesTab({ trades }: { trades: BacktestTradesResponse | null }) {
         </div>
         {trades.trades.map((trade, i) => (
           <div key={i} className="table-row">
-            <span className="col-time">
-              {new Date(trade.entry_time).toLocaleDateString()}
+            <span className="col-time">{formatDate((trade as { entry_time?: string }).entry_time)}</span>
+            <span className="col-symbol">{trade.symbol ?? "-"}</span>
+            <span className={`col-dir ${getDirectionClass(trade)}`}>
+              {getDirectionLabel(trade)}
             </span>
-            <span className="col-symbol">{trade.symbol}</span>
-            <span className={`col-dir ${trade.direction.toLowerCase()}`}>
-              {trade.direction}
+            <span className="col-entry">{formatNumber(trade.entry_price, 5)}</span>
+            <span className="col-exit">{formatNumber(trade.exit_price, 5)}</span>
+            <span className={`col-pnl ${getPnlClass(trade.pnl)}`}>
+              {formatNumber(trade.pnl, 2)}
             </span>
-            <span className="col-entry">{trade.entry_price.toFixed(5)}</span>
-            <span className="col-exit">{trade.exit_price.toFixed(5)}</span>
-            <span className={`col-pnl ${trade.pnl >= 0 ? "positive" : "negative"}`}>
-              {trade.pnl.toFixed(2)}
-            </span>
-            <span className="col-bot">{trade.bot}</span>
+            <span className="col-bot">{trade.bot ?? "-"}</span>
           </div>
         ))}
       </div>
     </div>
   );
+}
+
+function getDirectionLabel(trade: { direction?: string; side?: string }): string {
+  return (trade.direction ?? trade.side ?? "UNKNOWN").toUpperCase();
+}
+
+function getDirectionClass(trade: { direction?: string; side?: string }): string {
+  const normalized = getDirectionLabel(trade).toLowerCase();
+  if (normalized === "buy" || normalized === "long") return "buy";
+  if (normalized === "sell" || normalized === "short") return "sell";
+  return "unknown";
+}
+
+function getPnlClass(pnl: unknown): string {
+  return typeof pnl === "number" && pnl >= 0 ? "positive" : "negative";
+}
+
+function formatNumber(value: unknown, decimals: number): string {
+  return typeof value === "number" ? value.toFixed(decimals) : "-";
+}
+
+function formatDate(value: unknown): string {
+  if (typeof value !== "string") return "-";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "-" : parsed.toLocaleDateString();
 }
 
 function EquityTab({ equity }: { equity: BacktestEquityResponse | null }) {

@@ -27,6 +27,12 @@ import {
 } from "lightweight-charts";
 import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { Bar, OverlayResult, Signal } from "../lib/engineClient";
+import { Drawing, DrawingTool, DrawingCoord } from "../lib/drawings";
+import {
+  renderDrawing,
+  removeRenderedDrawing,
+  RenderedDrawing,
+} from "../lib/chartDrawings";
 
 // =============================================================================
 // Types
@@ -54,9 +60,13 @@ interface CandleChartProps {
   signals?: Signal[];
   executions?: Execution[];
   slTpLevels?: SlTpLevel[];
+  drawings?: Drawing[];
+  activeTool?: DrawingTool;
+  onDrawingComplete?: (drawing: Omit<Drawing, "id">) => void;
   /** Fixed height in px. If undefined, chart fills container height. */
   height?: number;
   onCrosshairMove?: (time: Time | null, price: number | null) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 // Overlay colors — readable on light background
@@ -85,8 +95,12 @@ export function CandleChart({
   signals = [],
   executions = [],
   slTpLevels = [],
+  drawings = [],
+  activeTool = "select",
+  onDrawingComplete,
   height,
   onCrosshairMove,
+  onContextMenu,
 }: CandleChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -94,6 +108,10 @@ export function CandleChart({
   const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const overlaySeriesRef = useRef<Map<string, LineSeriesApi>>(new Map());
   const slTpSeriesRef = useRef<Map<string, LineSeriesApi>>(new Map());
+  const renderedDrawingsRef = useRef<RenderedDrawing[]>([]);
+
+  // Drawing interaction state
+  const drawingStartRef = useRef<DrawingCoord | null>(null);
 
   // Track container dimensions for dynamic sizing
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -400,6 +418,111 @@ export function CandleChart({
     });
   }, [slTpLevels, candleData]);
 
+  // Render drawings
+  useEffect(() => {
+    if (!chartRef.current || !candleSeriesRef.current || candleData.length === 0) return;
+
+    const chart = chartRef.current;
+    const candleSeries = candleSeriesRef.current;
+
+    // Remove old rendered drawings
+    for (const rd of renderedDrawingsRef.current) {
+      removeRenderedDrawing(chart, candleSeries, rd);
+    }
+    renderedDrawingsRef.current = [];
+
+    // Render new drawings
+    const firstTime = candleData[0].time as number;
+    const lastTime = candleData[candleData.length - 1].time as number;
+
+    for (const drawing of drawings) {
+      const rd = renderDrawing(chart, candleSeries, drawing, {
+        first: firstTime,
+        last: lastTime,
+      });
+      renderedDrawingsRef.current.push(rd);
+    }
+  }, [drawings, candleData]);
+
+  // Drawing click handler — captures chart coordinates for drawing tools
+  useEffect(() => {
+    if (!containerRef.current || !chartRef.current || !candleSeriesRef.current) return;
+    if (activeTool === "select" || !onDrawingComplete) return;
+
+    const container = containerRef.current;
+    const chart = chartRef.current;
+    const candleSeries = candleSeriesRef.current;
+
+    const cb = onDrawingComplete;
+
+    function handleClick(e: MouseEvent) {
+      if (!cb) return;
+      // Get chart coordinate from click position
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      const time = chart.timeScale().coordinateToTime(x);
+      const price = candleSeries.coordinateToPrice(y);
+      if (time == null || price == null) return;
+
+      const coord: DrawingCoord = { time: time as number, price };
+
+      if (activeTool === "horizontal") {
+        // Single click completes
+        cb({
+          type: "horizontal",
+          symbol: "",  // Will be filled by parent
+          timeframe: "",
+          color: "",
+          locked: false,
+          price: coord.price,
+        });
+        return;
+      }
+
+      // Two-click tools: trendline, ray, rectangle
+      if (!drawingStartRef.current) {
+        drawingStartRef.current = coord;
+        return;
+      }
+
+      const start = drawingStartRef.current;
+      drawingStartRef.current = null;
+
+      if (activeTool === "trendline" || activeTool === "ray") {
+        cb({
+          type: activeTool,
+          symbol: "",
+          timeframe: "",
+          color: "",
+          locked: false,
+          p1: start,
+          p2: coord,
+        });
+      } else if (activeTool === "rectangle") {
+        cb({
+          type: "rectangle",
+          symbol: "",
+          timeframe: "",
+          color: "",
+          locked: false,
+          topLeft: {
+            time: Math.min(start.time, coord.time),
+            price: Math.max(start.price, coord.price),
+          },
+          bottomRight: {
+            time: Math.max(start.time, coord.time),
+            price: Math.min(start.price, coord.price),
+          },
+        });
+      }
+    }
+
+    container.addEventListener("click", handleClick);
+    return () => container.removeEventListener("click", handleClick);
+  }, [activeTool, onDrawingComplete]);
+
   // Fit content when data changes
   const fitContent = useCallback(() => {
     if (chartRef.current && candleData.length > 0) {
@@ -428,7 +551,11 @@ export function CandleChart({
   const hasSlTp = slTpLevels.length > 0;
 
   return (
-    <div className="candle-chart-container">
+    <div
+      className="candle-chart-container"
+      onContextMenu={onContextMenu}
+      style={{ cursor: activeTool !== "select" ? "crosshair" : undefined }}
+    >
       <div ref={containerRef} className="candle-chart" />
       {(hasMarkers || hasSlTp) && (
         <div className="chart-legend">

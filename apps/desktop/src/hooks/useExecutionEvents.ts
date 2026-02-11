@@ -10,6 +10,8 @@ import {
 } from "../lib/engineClient";
 import { Execution, SlTpLevel } from "../components/CandleChart";
 
+const DEBUG_INGEST_URL = "http://127.0.0.1:7245/ingest/b34e6a51-242b-4280-9e50-b775760b6116";
+
 interface UseExecutionEventsOptions {
   symbol: string;
   enabled?: boolean;
@@ -39,11 +41,23 @@ export function useExecutionEvents({
     setError(null);
 
     try {
+      // #region agent log H3 positions preflight
+      fetch(DEBUG_INGEST_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId: "pre-fix", hypothesisId: "H3", location: "useExecutionEvents.ts:fetch:start", message: "Execution events fetch start", data: { symbol, enabled }, timestamp: Date.now() }) }).catch(() => {});
+      // #endregion
+      const state = await engineClient.getExecutionState().catch(() => null);
+      if (!state?.connected) {
+        setExecutions([]);
+        setSlTpLevels([]);
+        return;
+      }
       // Fetch fills and positions in parallel
       const [fillsRes, positionsRes] = await Promise.all([
         engineClient.getExecutionFills({ symbol, limit: 200 }).catch(() => null),
         engineClient.getPositions().catch(() => null),
       ]);
+      // #region agent log H3 positions result
+      fetch(DEBUG_INGEST_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId: "pre-fix", hypothesisId: "H3", location: "useExecutionEvents.ts:fetch:result", message: "Execution events fetch result", data: { fillsReturned: Boolean(fillsRes), positionsReturned: Boolean(positionsRes), fillsCount: fillsRes?.fills?.length ?? 0, positionsCount: positionsRes?.positions?.length ?? 0 }, timestamp: Date.now() }) }).catch(() => {});
+      // #endregion
 
       // Convert fills to execution markers
       if (fillsRes) {

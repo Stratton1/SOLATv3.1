@@ -9,6 +9,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CandleChart } from "../CandleChart";
+import { DrawingToolbar } from "../DrawingToolbar";
+import { ContextMenu, useContextMenu, type ContextMenuItem } from "../ContextMenu";
 import { useBars } from "../../hooks/useBars";
 import { useOverlays } from "../../hooks/useOverlays";
 import { useSignals } from "../../hooks/useSignals";
@@ -19,7 +21,9 @@ import { useWorkspace } from "../../hooks/useWorkspace";
 import { useWsEvents, QuoteUpdateEvent, BarUpdateEvent } from "../../hooks/useWsEvents";
 import { useAvailability } from "../../hooks/useAvailability";
 import { useExecutionEvents } from "../../hooks/useExecutionEvents";
+import { useDrawings } from "../../hooks/useDrawings";
 import { Panel, TIMEFRAMES, LinkGroup } from "../../lib/workspace";
+import { Drawing, DEFAULT_DRAWING_COLOR } from "../../lib/drawings";
 
 // =============================================================================
 // Types
@@ -77,9 +81,11 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
     bars: shouldFetchOverlays ? bars : undefined,
   });
 
+  const shouldFetchSignals = panel.showMarkers && (isFocused || isOnlyPanel);
   const { signals } = useSignals({
     symbol: panel.symbol,
     timeframe: panel.timeframe,
+    enabled: shouldFetchSignals,
   });
 
   // Execution markers + SL/TP levels
@@ -89,6 +95,22 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
     symbol: panel.symbol,
     enabled: showExec || showSlTp,
   });
+
+  // Drawings
+  const {
+    chartDrawings,
+    activeTool,
+    setActiveTool,
+    addDrawing,
+    clearDrawings,
+  } = useDrawings({
+    panelId: panel.id,
+    symbol: panel.symbol,
+    timeframe: panel.timeframe,
+  });
+
+  // Context menu
+  const { menu, showContextMenu, closeContextMenu } = useContextMenu();
 
   // WebSocket handlers
   const handleQuote = useCallback(
@@ -121,6 +143,29 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
       subscribe([panel.symbol], "stream").catch(console.error);
     }
   }, [panel.symbol, enrichedItems, marketStatus, subscribe]);
+
+  // Handle deep link from blotter/palette (sessionStorage) — run once on mount
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("solat_chart_deeplink");
+      if (!raw) return;
+      const link = JSON.parse(raw) as { symbol: string; timeframe?: string; timestamp?: string };
+      sessionStorage.removeItem("solat_chart_deeplink");
+
+      // Only handle on the first panel
+      if (_index !== 0) return;
+
+      if (link.symbol && link.symbol !== panel.symbol) {
+        handleSymbolChange(link.symbol);
+      }
+      if (link.timeframe && link.timeframe !== panel.timeframe) {
+        handleTimeframeChange(link.timeframe);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Filter symbols for search
   const filteredSymbols = useMemo(() => {
@@ -175,6 +220,37 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
   const toggleExecutions = useCallback(() => {
     updatePanel(panel.id, { showExecutions: !(panel.showExecutions !== false) });
   }, [panel.id, panel.showExecutions, updatePanel]);
+
+  // Drawing completion handler
+  const handleDrawingComplete = useCallback(
+    (partial: Omit<Drawing, "id">) => {
+      addDrawing({
+        ...partial,
+        symbol: panel.symbol,
+        timeframe: panel.timeframe,
+        color: partial.color || DEFAULT_DRAWING_COLOR,
+      });
+      // Reset to select after drawing
+      setActiveTool("select");
+    },
+    [panel.symbol, panel.timeframe, addDrawing, setActiveTool]
+  );
+
+  // Chart context menu
+  const handleChartContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      const items: ContextMenuItem[] = [
+        {
+          label: "Clear All Drawings",
+          icon: "\u2717",
+          action: clearDrawings,
+          destructive: true,
+        },
+      ];
+      showContextMenu(e, items);
+    },
+    [clearDrawings, showContextMenu]
+  );
 
   return (
     <div
@@ -240,6 +316,14 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
         </div>
 
         <div className="panel-header-right">
+          {/* Drawing Tools (show when focused) */}
+          {isFocused && (
+            <DrawingToolbar
+              activeTool={activeTool}
+              onToolChange={setActiveTool}
+            />
+          )}
+
           {/* Link Group */}
           <div className="panel-link-selector">
             {LINK_GROUPS.map((lg) => (
@@ -298,6 +382,10 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
             signals={panel.showMarkers ? signals : []}
             executions={showExec ? executions : []}
             slTpLevels={showSlTp ? slTpLevels : []}
+            drawings={chartDrawings}
+            activeTool={activeTool}
+            onDrawingComplete={handleDrawingComplete}
+            onContextMenu={handleChartContextMenu}
             height={undefined}
           />
         )}
@@ -327,6 +415,16 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
         <div
           className="dropdown-backdrop"
           onClick={() => setShowSymbolDropdown(false)}
+        />
+      )}
+
+      {/* Context Menu */}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menu.items}
+          onClose={closeContextMenu}
         />
       )}
     </div>

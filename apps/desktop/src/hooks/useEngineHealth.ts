@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const ENGINE_URL = "http://127.0.0.1:8765";
 
 // Retry configuration
+const INITIAL_DELAY_MS = 3000; // Wait for engine to start before first check
 const INITIAL_RETRY_DELAY_MS = 1000;
 const MAX_RETRY_DELAY_MS = 30000;
 const BACKOFF_MULTIPLIER = 1.5;
@@ -63,6 +64,8 @@ export function useEngineHealth(): UseEngineHealthResult {
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Track whether we've ever successfully fetched, to avoid loading jitter on polls
+  const hasDataRef = useRef(false);
 
   const clearTimers = useCallback(() => {
     if (retryTimeoutRef.current) {
@@ -112,7 +115,11 @@ export function useEngineHealth(): UseEngineHealthResult {
 
   const fetchData = useCallback(async () => {
     try {
-      setIsLoading(true);
+      // Only show loading spinner on initial fetch (no existing data).
+      // Subsequent polls keep stale data visible ("stale-while-revalidate").
+      if (!hasDataRef.current) {
+        setIsLoading(true);
+      }
       setError(null);
 
       if (connectionState === "disconnected" || connectionState === "retrying") {
@@ -142,6 +149,7 @@ export function useEngineHealth(): UseEngineHealthResult {
       setConnectionState("connected");
       setRetryCount(0);
       setNextRetryIn(null);
+      hasDataRef.current = true;
 
       // Start polling if not already
       if (!pollIntervalRef.current) {
@@ -156,8 +164,11 @@ export function useEngineHealth(): UseEngineHealthResult {
           : "Unknown error";
 
       setError(message);
-      setHealth(null);
-      setConfig(null);
+      // Keep stale data visible so cards don't blank out during transient errors.
+      if (!hasDataRef.current) {
+        setHealth(null);
+        setConfig(null);
+      }
       setConnectionState("disconnected");
 
       // Clear polling
@@ -184,9 +195,13 @@ export function useEngineHealth(): UseEngineHealthResult {
   }, [clearTimers, fetchData]);
 
   useEffect(() => {
-    fetchData();
+    // Delay first health check to give engine time to start
+    const initialTimer = setTimeout(() => {
+      fetchData();
+    }, INITIAL_DELAY_MS);
 
     return () => {
+      clearTimeout(initialTimer);
       clearTimers();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

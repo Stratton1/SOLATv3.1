@@ -14,8 +14,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { open } from "@tauri-apps/plugin-shell";
 import { engineClient, DataSummaryResponse, DataSyncResponse } from "../lib/engineClient";
 import { useLiveGates } from "../hooks/useLiveGates";
+import { InfoTip } from "../components/InfoTip";
 
 interface IGTestResult {
   ok: boolean;
@@ -40,6 +42,10 @@ export function SettingsScreen() {
   const [syncing, setSyncing] = useState(false);
   const [syncDays, setSyncDays] = useState(30);
   const [syncResult, setSyncResult] = useState<DataSyncResponse | null>(null);
+
+  // Derive all state
+  const [deriving, setDeriving] = useState(false);
+  const [deriveResult, setDeriveResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const { gates, isLiveMode, blockers, warnings, refreshGates } = useLiveGates();
 
@@ -101,6 +107,26 @@ export function SettingsScreen() {
     } finally {
       setSyncing(false);
     }
+  };
+
+  const handleDeriveAll = async () => {
+    setDeriving(true);
+    setDeriveResult(null);
+    try {
+      const result = await engineClient.deriveAll();
+      setDeriveResult(result);
+    } catch (err) {
+      setDeriveResult({
+        ok: false,
+        message: err instanceof Error ? err.message : "Derive failed",
+      });
+    } finally {
+      setDeriving(false);
+    }
+  };
+
+  const revealInFinder = (path: string) => {
+    open(path);
   };
 
   useEffect(() => {
@@ -203,7 +229,10 @@ export function SettingsScreen() {
 
       {/* Engine Section */}
       <section className="settings-section">
-        <h3 className="section-title">Engine</h3>
+        <h3 className="section-title">
+          Engine
+          <InfoTip text="Core engine configuration. The engine runs as a Python FastAPI sidecar on localhost:8765. Mode controls whether trades are paper (DEMO) or real (LIVE)." />
+        </h3>
         <div className="settings-grid">
           <div className="setting-row">
             <span className="setting-label">Mode</span>
@@ -236,9 +265,44 @@ export function SettingsScreen() {
         </div>
       </section>
 
+      {/* Data Locations Section */}
+      <section className="settings-section">
+        <h3 className="section-title">
+          Data Locations
+          <InfoTip text="Filesystem paths where bars, backtests, sweeps, and proposals are stored. Use Reveal to open the directory in Finder." />
+        </h3>
+        <div className="settings-grid">
+          {[
+            { label: "Bars (Parquet)", path: (config as Record<string, unknown>)?.bars_path as string },
+            { label: "Backtests", path: (config as Record<string, unknown>)?.backtests_path as string },
+            { label: "Sweeps", path: (config as Record<string, unknown>)?.sweeps_path as string },
+            { label: "Proposals", path: (config as Record<string, unknown>)?.proposals_path as string },
+          ].map(({ label, path }) => (
+            <div className="setting-row" key={label}>
+              <span className="setting-label">{label}</span>
+              <span className="setting-value" title={path || ""}>
+                {formatPath(path)}
+                {path && (
+                  <button
+                    className="btn-inline"
+                    onClick={() => revealInFinder(path)}
+                    title="Reveal in Finder"
+                  >
+                    Reveal
+                  </button>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* IG Connectivity Section */}
       <section className="settings-section">
-        <h3 className="section-title">IG Connectivity</h3>
+        <h3 className="section-title">
+          IG Connectivity
+          <InfoTip text="IG Markets broker integration. Requires API key, username, and password in your .env file. Test Login verifies credentials without placing any orders." />
+        </h3>
         <div className="settings-grid">
           <div className="setting-row">
             <span className="setting-label">Configured</span>
@@ -282,7 +346,10 @@ export function SettingsScreen() {
 
       {/* Execution Safety Section */}
       <section className="settings-section">
-        <h3 className="section-title">Execution Safety</h3>
+        <h3 className="section-title">
+          Execution Safety
+          <InfoTip text="Safety gates that must be satisfied before LIVE trading is allowed. Blockers prevent live mode entirely; warnings are advisory. Risk limits are configured in the engine and cannot be changed from the UI." />
+        </h3>
         <div className="settings-grid">
           <div className="setting-row">
             <span className="setting-label">LIVE Allowed</span>
@@ -350,7 +417,10 @@ export function SettingsScreen() {
 
       {/* Data Section */}
       <section className="settings-section">
-        <h3 className="section-title">Historical Data</h3>
+        <h3 className="section-title">
+          Historical Data
+          <InfoTip text="Parquet bar data stored locally for backtesting and strategy evaluation. Use Quick Sync to download data from IG Markets. Data is stored per symbol and timeframe." />
+        </h3>
         {dataSummary && dataSummary.summaries.length > 0 ? (
           <>
             <div className="settings-grid">
@@ -450,6 +520,29 @@ export function SettingsScreen() {
                   ))}
                 </ul>
               )}
+            </div>
+          )}
+        </div>
+
+        <h4 className="subsection-title">Derive All Timeframes</h4>
+        <div className="sync-controls">
+          <p className="text-muted setting-note">
+            Derive 15m, 30m, 1h, 4h bars from existing 1m data for all symbols.
+          </p>
+          <div className="setting-actions">
+            <button
+              className="btn btn-secondary"
+              onClick={handleDeriveAll}
+              disabled={deriving}
+            >
+              {deriving ? "Deriving..." : "Derive All Timeframes"}
+            </button>
+          </div>
+          {deriveResult && (
+            <div className={`sync-result ${deriveResult.ok ? "text-green" : "text-red"}`}>
+              <p>
+                <strong>{deriveResult.ok ? "\u2713" : "\u2717"}</strong> {deriveResult.message}
+              </p>
             </div>
           )}
         </div>

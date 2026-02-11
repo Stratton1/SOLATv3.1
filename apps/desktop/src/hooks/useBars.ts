@@ -2,7 +2,7 @@
  * Hook for fetching and managing bar data.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { Bar, BarsResponse, engineClient } from "../lib/engineClient";
 
 interface UseBarsOptions {
@@ -37,27 +37,36 @@ export function useBars({
   const [quality, setQuality] = useState<BarsResponse["quality"]>(undefined);
   const [start, setStart] = useState<string | null>(null);
   const [end, setEnd] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const fetch = useCallback(async () => {
     if (!symbol || !timeframe) return;
+
+    // Cancel previous in-flight request
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     setIsLoading(true);
     setError(null);
     try {
       const data = await engineClient.getBars(symbol, timeframe, { limit });
+      if (controller.signal.aborted) return;
       setBars(data.bars);
       setQuality(data.quality);
       setStart(data.start ?? null);
       setEnd(data.end ?? null);
     } catch (e) {
+      if (controller.signal.aborted) return;
       setError(e instanceof Error ? e.message : "Failed to load bars");
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) setIsLoading(false);
     }
   }, [symbol, timeframe, limit]);
 
   useEffect(() => {
     fetch();
+    return () => abortRef.current?.abort();
   }, [fetch]);
 
   useEffect(() => {

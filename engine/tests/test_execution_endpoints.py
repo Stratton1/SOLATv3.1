@@ -30,6 +30,17 @@ class TestStatusEndpoint:
         assert data["connected"] is False
         assert data["armed"] is False
         assert data["kill_switch_active"] is False
+        assert data["signals_enabled"] is True
+        assert data["demo_arm_enabled"] is False
+
+    def test_state_alias_matches_status(self, api_client: TestClient) -> None:
+        """Legacy /execution/state alias should mirror /execution/status."""
+        status_response = api_client.get("/execution/status")
+        state_response = api_client.get("/execution/state")
+
+        assert status_response.status_code == 200
+        assert state_response.status_code == 200
+        assert state_response.json() == status_response.json()
 
 
 # =============================================================================
@@ -316,6 +327,27 @@ class TestRunOnceEndpoint:
 
         assert response.status_code == 400
 
+    def test_run_once_requires_demo_arm(
+        self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
+    ) -> None:
+        """Should require demo_arm_enabled for run-once."""
+        overrider.override(get_ig_client, lambda: mock_ig_client)
+
+        api_client.post("/execution/connect")
+
+        response = api_client.post(
+            "/execution/run-once",
+            json={
+                "symbol": "EURUSD",
+                "bot": "TestBot",
+                "side": "BUY",
+                "size": 0.1,
+            },
+        )
+
+        assert response.status_code == 400
+        assert "DEMO arm" in response.json()["detail"]
+
     def test_run_once_when_not_armed(
         self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
     ) -> None:
@@ -323,7 +355,8 @@ class TestRunOnceEndpoint:
         overrider.override(get_ig_client, lambda: mock_ig_client)
 
         api_client.post("/execution/connect")
-        # Note: NOT arming
+        # Enable DEMO arm but do NOT arm
+        api_client.post("/execution/mode", json={"demo_arm_enabled": True})
 
         response = api_client.post(
             "/execution/run-once",
@@ -339,3 +372,134 @@ class TestRunOnceEndpoint:
         data = response.json()
         assert data["ok"] is True  # Intent recorded
         assert data["status"] == "PENDING"  # Not submitted
+
+
+# =============================================================================
+# Mode Endpoint Tests
+# =============================================================================
+
+
+class TestModeEndpoint:
+    """Tests for GET/POST /execution/mode endpoints."""
+
+    def test_get_mode_defaults(self, api_client: TestClient) -> None:
+        """Should return default mode flags."""
+        response = api_client.get("/execution/mode")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["signals_enabled"] is True
+        assert data["demo_arm_enabled"] is False
+        assert data["mode"] == "DEMO"
+
+    def test_set_signals_enabled(self, api_client: TestClient) -> None:
+        """Should toggle signals_enabled."""
+        response = api_client.post("/execution/mode", json={"signals_enabled": False})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["signals_enabled"] is False
+        assert data["demo_arm_enabled"] is False
+
+        # Verify via GET
+        get_resp = api_client.get("/execution/mode")
+        assert get_resp.json()["signals_enabled"] is False
+
+    def test_set_demo_arm_enabled(self, api_client: TestClient) -> None:
+        """Should toggle demo_arm_enabled."""
+        response = api_client.post("/execution/mode", json={"demo_arm_enabled": True})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["demo_arm_enabled"] is True
+
+    def test_set_both_flags(self, api_client: TestClient) -> None:
+        """Should set both flags in one request."""
+        response = api_client.post(
+            "/execution/mode",
+            json={"signals_enabled": False, "demo_arm_enabled": True},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["signals_enabled"] is False
+        assert data["demo_arm_enabled"] is True
+
+    def test_partial_update_preserves_other(self, api_client: TestClient) -> None:
+        """Setting one flag should not affect the other."""
+        # Enable demo arm
+        api_client.post("/execution/mode", json={"demo_arm_enabled": True})
+
+        # Disable signals — demo_arm should remain True
+        response = api_client.post("/execution/mode", json={"signals_enabled": False})
+
+        data = response.json()
+        assert data["signals_enabled"] is False
+        assert data["demo_arm_enabled"] is True
+
+
+# =============================================================================
+# Signals Endpoint Tests
+# =============================================================================
+
+
+class TestSignalsEndpoint:
+    """Tests for GET /execution/signals endpoint."""
+
+    def test_signals_empty(self, api_client: TestClient) -> None:
+        """Should return empty signals when no intents recorded."""
+        response = api_client.get("/execution/signals")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["signals"] == []
+        assert data["total"] == 0
+
+    def test_signals_after_run_once(
+        self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
+    ) -> None:
+        """Should return signal after a run-once creates an intent."""
+        overrider.override(get_ig_client, lambda: mock_ig_client)
+
+        api_client.post("/execution/connect")
+        api_client.post("/execution/mode", json={"demo_arm_enabled": True})
+        api_client.post(
+            "/execution/run-once",
+            json={
+                "symbol": "EURUSD",
+                "bot": "CloudTwist",
+                "side": "BUY",
+                "size": 0.1,
+            },
+        )
+
+        response = api_client.get("/execution/signals")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] >= 1
+        assert data["signals"][0]["symbol"] == "EURUSD"
+        assert data["signals"][0]["side"] == "BUY"
+
+    def test_signals_filter_by_symbol(
+        self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
+    ) -> None:
+        """Should filter signals by symbol."""
+        overrider.override(get_ig_client, lambda: mock_ig_client)
+
+        api_client.post("/execution/connect")
+        api_client.post("/execution/mode", json={"demo_arm_enabled": True})
+        api_client.post(
+            "/execution/run-once",
+            json={"symbol": "EURUSD", "bot": "TestBot", "side": "BUY", "size": 0.1},
+        )
+
+        # Filter for non-matching symbol
+        response = api_client.get("/execution/signals?symbol=GBPUSD")
+        assert response.status_code == 200
+        assert response.json()["total"] == 0
+
+        # Filter for matching symbol
+        response = api_client.get("/execution/signals?symbol=EURUSD")
+        assert response.status_code == 200
+        assert response.json()["total"] >= 1

@@ -31,8 +31,8 @@ async def run_walk_forward(
     start_date: str = "2023-01-01",
     end_date: str = "2024-12-31",
     in_sample_days: int = 180,
-    out_of_sample_days: int = 60,
-    step_days: int = 60,
+    out_of_sample_days: int = 45,
+    step_days: int = 45,
 ) -> dict:
     """Run walk-forward optimization."""
     script_dir = Path(__file__).parent.parent
@@ -95,8 +95,8 @@ def main():
     parser.add_argument("--start", default="2023-01-01", help="Start date")
     parser.add_argument("--end", default="2024-12-31", help="End date")
     parser.add_argument("--is-days", type=int, default=180, help="In-sample days")
-    parser.add_argument("--oos-days", type=int, default=60, help="Out-of-sample days")
-    parser.add_argument("--step-days", type=int, default=60, help="Step days")
+    parser.add_argument("--oos-days", type=int, default=45, help="Out-of-sample days")
+    parser.add_argument("--step-days", type=int, default=45, help="Step days")
     args = parser.parse_args()
 
     print(f"\n{'='*60}")

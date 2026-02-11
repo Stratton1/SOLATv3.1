@@ -109,3 +109,10 @@ addopts = "-v --tb=short"
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
+markers = [
+    "chaos: Chaos/failure injection tests",
+    "tier1: Data corruption tests (pre-LIVE blocker)",
+    "tier2: State inconsistency tests",
+    "tier3: Operational blindness tests",
+    "tier4: Recovery scenario tests",
+]

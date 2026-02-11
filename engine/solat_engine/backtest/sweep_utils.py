@@ -467,6 +467,7 @@ def generate_top_picks_json(
         picks = _diversified_select(ranked_df, top_n, diversify_by)
 
     result = {
+        "schema_version": "1.0",
         "generated_at": datetime.now(UTC).isoformat(),
         "start": start,
         "end": end,
@@ -620,6 +621,7 @@ def detect_broken_bots(
         })
 
     return {
+        "schema_version": "1.0",
         "generated_at": datetime.now(UTC).isoformat(),
         "zero_trade_threshold": zero_trade_threshold,
         "total_bots": len(bot_stats),
@@ -679,6 +681,7 @@ def generate_curated_allowlist(
 
     if not selected_rows:
         allowlist: dict[str, Any] = {
+            "schema_version": "1.0",
             "generated_at": datetime.now(UTC).isoformat(),
             "filters": {
                 "excluded_bots": broken_bots,
@@ -726,6 +729,7 @@ def generate_curated_allowlist(
             symbols_dict[symbol] = timeframes_dict
 
     allowlist = {
+        "schema_version": "1.0",
         "generated_at": datetime.now(UTC).isoformat(),
         "filters": {
             "excluded_bots": broken_bots,

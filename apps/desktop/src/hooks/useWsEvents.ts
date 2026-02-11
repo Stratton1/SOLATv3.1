@@ -5,6 +5,8 @@
 import { useEffect, useRef } from "react";
 import { Bar } from "../lib/engineClient";
 
+const DEBUG_INGEST_URL = "http://127.0.0.1:7245/ingest/b34e6a51-242b-4280-9e50-b775760b6116";
+
 // WebSocket event types from engine
 export interface QuoteUpdateEvent {
   type: "quote_update";
@@ -73,7 +75,28 @@ export function useWsEvents({
   onDisconnect,
 }: UseWsEventsOptions) {
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handlersRef = useRef({
+    onQuote,
+    onBar,
+    onMarketStatus,
+    onExecution,
+    onHeartbeat,
+    onConnect,
+    onDisconnect,
+  });
+
+  useEffect(() => {
+    handlersRef.current = {
+      onQuote,
+      onBar,
+      onMarketStatus,
+      onExecution,
+      onHeartbeat,
+      onConnect,
+      onDisconnect,
+    };
+  }, [onQuote, onBar, onMarketStatus, onExecution, onHeartbeat, onConnect, onDisconnect]);
 
   useEffect(() => {
     let mounted = true;
@@ -81,25 +104,44 @@ export function useWsEvents({
     const connect = () => {
       if (!mounted) return;
 
+      // #region agent log H5 ws connect attempt
+      fetch(DEBUG_INGEST_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId: "pre-fix", hypothesisId: "H5", location: "useWsEvents.ts:connect:start", message: "WebSocket connect attempt", data: { wsUrl }, timestamp: Date.now() }) }).catch(() => {});
+      // #endregion
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        if (mounted) {
-          onConnect?.();
+        // #region agent log H5 ws open
+        fetch(DEBUG_INGEST_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId: "pre-fix", hypothesisId: "H5", location: "useWsEvents.ts:onopen", message: "WebSocket connected", data: { wsUrl, readyState: ws.readyState }, timestamp: Date.now() }) }).catch(() => {});
+        // #endregion
+        if (!mounted) {
+          ws.close();
+          return;
         }
+        handlersRef.current.onConnect?.();
       };
 
       ws.onclose = () => {
+        // #region agent log H5 ws close
+        fetch(DEBUG_INGEST_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId: "pre-fix", hypothesisId: "H5", location: "useWsEvents.ts:onclose", message: "WebSocket closed", data: { wsUrl, readyState: ws.readyState }, timestamp: Date.now() }) }).catch(() => {});
+        // #endregion
+        if (wsRef.current === ws) {
+          wsRef.current = null;
+        }
         if (mounted) {
-          onDisconnect?.();
+          handlersRef.current.onDisconnect?.();
           // Reconnect after 2 seconds
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current);
+          }
           reconnectTimeoutRef.current = setTimeout(connect, 2000);
         }
       };
 
       ws.onerror = () => {
-        ws.close();
+        // #region agent log H5 ws error
+        fetch(DEBUG_INGEST_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId: "pre-fix", hypothesisId: "H5", location: "useWsEvents.ts:onerror", message: "WebSocket error event", data: { wsUrl, readyState: ws.readyState }, timestamp: Date.now() }) }).catch(() => {});
+        // #endregion
       };
 
       ws.onmessage = (event) => {
@@ -110,19 +152,19 @@ export function useWsEvents({
 
           switch (data.type) {
             case "quote_update":
-              onQuote?.(data);
+              handlersRef.current.onQuote?.(data);
               break;
             case "bar_update":
-              onBar?.(data);
+              handlersRef.current.onBar?.(data);
               break;
             case "market_status":
-              onMarketStatus?.(data);
+              handlersRef.current.onMarketStatus?.(data);
               break;
             case "execution_event":
-              onExecution?.(data);
+              handlersRef.current.onExecution?.(data);
               break;
             case "heartbeat":
-              onHeartbeat?.(data);
+              handlersRef.current.onHeartbeat?.(data);
               break;
           }
         } catch {
@@ -137,12 +179,25 @@ export function useWsEvents({
       mounted = false;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
-      if (wsRef.current) {
-        wsRef.current.close();
+      const ws = wsRef.current;
+      wsRef.current = null;
+      if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+
+        if (ws.readyState === WebSocket.CONNECTING) {
+          // Avoid noisy "closed before established" errors in React StrictMode cleanup.
+          ws.addEventListener("open", () => ws.close(), { once: true });
+        } else if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CLOSING) {
+          ws.close();
+        }
       }
     };
-  }, [wsUrl, onQuote, onBar, onMarketStatus, onExecution, onHeartbeat, onConnect, onDisconnect]);
+  }, [wsUrl]);
 
   return wsRef;
 }

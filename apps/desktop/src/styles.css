@@ -98,7 +98,7 @@ body {
     "left-col mid-col right-col";
   grid-template-columns: 320px 1fr 320px;
   grid-template-rows: 40px 1fr;
-  height: 100vh;
+  height: 100%;
   width: 100%;
   gap: 8px;
   padding: 8px;
@@ -124,44 +124,42 @@ body {
   flex-shrink: 0;
 }
 
-.status-dashboard-left {
-  grid-area: left-col;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.status-dashboard-mid {
-  grid-area: mid-col;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 0;
-  overflow: hidden;
-  min-width: 0; /* Prevent horizontal blowout */
-}
-
+.status-dashboard-left,
+.status-dashboard-mid,
 .status-dashboard-right {
-  grid-area: right-col;
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-height: 0;
+  height: 100%;
   overflow-y: auto;
+  padding-bottom: 16px;
 }
 
-/* Responsive: Stack columns on smaller screens */
-@media (max-width: 1200px) {
+.status-dashboard-left { grid-area: left-col; }
+.status-dashboard-mid { grid-area: mid-col; min-width: 0; }
+.status-dashboard-right { grid-area: right-col; }
+
+/* Responsive: Stack columns and allow page-level scroll when space is tight */
+@media (max-width: 1200px), (max-height: 700px) {
   .status-dashboard {
     grid-template-areas:
-      "header header"
-      "left-col right-col"
-      "mid-col mid-col";
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto 1fr;
+      "header"
+      "left-col"
+      "mid-col"
+      "right-col";
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto;
     overflow-y: auto;
+    height: 100%;
+  }
+
+  .status-dashboard-left,
+  .status-dashboard-mid,
+  .status-dashboard-right {
+    height: auto;
+    overflow: visible;
+    padding-bottom: 0;
   }
 }
 

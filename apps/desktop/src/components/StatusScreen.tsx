@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useState, useRef, useCallback } from "react";
 import { DemoChecklist } from "./DemoChecklist";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { ExecutionPanel } from "./ExecutionPanel";
@@ -209,7 +209,7 @@ function TerminalSignalsTable() {
   const { signals, total, isLoading, error, refetch } = useTerminalSignals({ limit: 50 });
 
   return (
-    <div className="terminal-card" style={{ flex: 1, overflow: "hidden" }}>
+    <div className="terminal-card" style={{ flex: 1, minHeight: "200px", overflow: "hidden" }}>
       <div className="terminal-card-header">
         <span className="terminal-card-title">
           Live Signals
@@ -273,7 +273,7 @@ function AutopilotStatus() {
   const { state, enable, disable } = useAutopilot();
 
   return (
-    <div className="terminal-card">
+    <div className="terminal-card" style={{ flexShrink: 0 }}>
       <div className="terminal-card-header">
         <span className="terminal-card-title">
           Autopilot
@@ -318,40 +318,42 @@ function AllowlistGrid() {
   const { grouped, isLoading, error } = useAllowlist();
 
   return (
-    <div className="terminal-card" style={{ flex: 1, overflow: "hidden" }}>
+    <div className="terminal-card" style={{ flex: 1, minHeight: "150px", overflow: "hidden" }}>
       <div className="terminal-card-header">
         <span className="terminal-card-title">
           Trading Allowlist
           <InfoTip text="Eligible symbol/bot/timeframe combinations for execution. These are sourced from your latest Walk-Forward optimization runs." />
         </span>
       </div>
-      <div className="terminal-card-body">
+      <div className="terminal-card-body" style={{ padding: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div className="scroll-area">
-          {isLoading ? (
-            <div className="skeleton" style={{ height: 100 }} />
-          ) : error ? (
-            <div style={{ color: "var(--accent-red)", fontSize: 11 }}>{error}</div>
-          ) : grouped.length === 0 ? (
-            <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 11, padding: 20 }}>
-              NO ACTIVE TRADING COMBOS
-            </div>
-          ) : (
-            <div className="allowlist-grouped-grid">
-              {grouped.map((group) => (
-                <div key={group.symbol} className="allowlist-symbol-group">
-                  <div className="allowlist-symbol-header">{group.symbol}</div>
-                  <div className="allowlist-symbol-entries">
-                    {group.bots.map((entry) => (
-                      <div key={entry.combo_id} className={`allowlist-entry-tag ${entry.enabled ? "active" : "disabled"}`}>
-                        <span className="entry-bot">{entry.bot}</span>
-                        <span className="entry-tf">{entry.timeframe}</span>
-                      </div>
-                    ))}
+          <div style={{ padding: 12 }}>
+            {isLoading ? (
+              <div className="skeleton" style={{ height: 100 }} />
+            ) : error ? (
+              <div style={{ color: "var(--accent-red)", fontSize: 11 }}>{error}</div>
+            ) : grouped.length === 0 ? (
+              <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 11, padding: 20 }}>
+                NO ACTIVE TRADING COMBOS
+              </div>
+            ) : (
+              <div className="allowlist-grouped-grid">
+                {grouped.map((group) => (
+                  <div key={group.symbol} className="allowlist-symbol-group">
+                    <div className="allowlist-symbol-header">{group.symbol}</div>
+                    <div className="allowlist-symbol-entries">
+                      {group.bots.map((entry) => (
+                        <div key={entry.combo_id} className={`allowlist-entry-tag ${entry.enabled ? "active" : "disabled"}`}>
+                          <span className="entry-bot">{entry.bot}</span>
+                          <span className="entry-tf">{entry.timeframe}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -373,6 +375,19 @@ export function StatusScreen({
   isStartingEngine = false,
 }: StatusScreenProps) {
   const { data: igStatus } = useIgStatus();
+  const execCardRef = useRef<HTMLDivElement>(null);
+
+  const scrollToExecControl = useCallback(() => {
+    const card = execCardRef.current;
+    if (!card) return;
+    card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    card.classList.add("highlight-flash");
+    const cleanup = () => {
+      card.classList.remove("highlight-flash");
+      card.removeEventListener("animationend", cleanup);
+    };
+    card.addEventListener("animationend", cleanup);
+  }, []);
 
   if (isLoading) {
     return (
@@ -448,7 +463,7 @@ export function StatusScreen({
           isStartingEngine={isStartingEngine}
           engineHealthy={health?.status === "healthy"}
         />
-        <div className="terminal-card" style={{ flex: 1 }}>
+        <div ref={execCardRef} className="terminal-card" style={{ flexShrink: 0 }}>
           <div className="terminal-card-header">
             <span className="terminal-card-title">
               Execution Control
@@ -456,9 +471,7 @@ export function StatusScreen({
             </span>
           </div>
           <div className="terminal-card-body">
-            <div className="scroll-area">
-              <ExecutionPanel igConfigured={config?.ig_configured ?? false} />
-            </div>
+            <ExecutionPanel igConfigured={config?.ig_configured ?? false} />
           </div>
         </div>
       </aside>
@@ -472,7 +485,7 @@ export function StatusScreen({
 
       {/* Right Column: Checklist & Diagnostics */}
       <aside className="status-dashboard-right">
-        <div className="terminal-card">
+        <div className="terminal-card" style={{ flexShrink: 0 }}>
           <div className="terminal-card-header">
             <span className="terminal-card-title">
               DEMO Setup Checklist
@@ -480,19 +493,17 @@ export function StatusScreen({
             </span>
           </div>
           <div className="terminal-card-body">
-            <div className="scroll-area">
-              <DemoChecklist />
-            </div>
+            <DemoChecklist onScrollToConnect={scrollToExecControl} />
           </div>
         </div>
-        <div className="terminal-card" style={{ flex: 1 }}>
+        <div className="terminal-card" style={{ flex: 1, minHeight: "200px" }}>
           <div className="terminal-card-header">
             <span className="terminal-card-title">
               System Diagnostics
               <InfoTip text="Detailed internal state and event logs. Use for troubleshooting engine or data feed issues." />
             </span>
           </div>
-          <div className="terminal-card-body" style={{ padding: 0 }}>
+          <div className="terminal-card-body" style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
             <div className="scroll-area">
               <DiagnosticsPanel />
             </div>

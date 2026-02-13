@@ -9,6 +9,8 @@ import { engineClient } from "../lib/engineClient";
 import { useToast } from "../context/ToastContext";
 
 interface DemoChecklistProps {
+  onScrollToBroker?: () => void;
+  onScrollToExecControl?: () => void;
   onScrollToConnect?: () => void;
 }
 
@@ -26,7 +28,7 @@ interface RunOnceResult {
   error?: string;
 }
 
-export function DemoChecklist({ onScrollToConnect }: DemoChecklistProps) {
+export function DemoChecklist({ onScrollToBroker, onScrollToExecControl, onScrollToConnect }: DemoChecklistProps) {
   const { status: execStatus } = useExecutionStatus();
   const { mode: execMode } = useExecutionMode();
   const { showToast } = useToast();
@@ -78,7 +80,7 @@ export function DemoChecklist({ onScrollToConnect }: DemoChecklistProps) {
   const steps: ChecklistStep[] = [
     {
       label: "Connect IG DEMO",
-      description: "Open a broker session via Execution Control.",
+      description: "Test your broker connection via Broker Connectivity.",
       status: execStatus?.connected ? "done" : "pending",
     },
     {
@@ -127,17 +129,17 @@ export function DemoChecklist({ onScrollToConnect }: DemoChecklistProps) {
               
               {/* Contextual Actions */}
               <div className="checklist-actions" style={{ marginTop: 4 }}>
-                {idx === 0 && step.status === "pending" && onScrollToConnect && (
-                  <button className="btn-inline" onClick={onScrollToConnect}>Go to Connect</button>
+                {idx === 0 && step.status === "pending" && (onScrollToBroker || onScrollToConnect) && (
+                  <button className="btn-inline" onClick={onScrollToBroker ?? onScrollToConnect}>Go to Connect</button>
                 )}
-                {idx === 1 && step.status === "pending" && onScrollToConnect && (
-                  <button className="btn-inline" onClick={onScrollToConnect}>Go to Execution Control</button>
+                {idx === 1 && step.status === "pending" && (onScrollToExecControl || onScrollToConnect) && (
+                  <button className="btn-inline" onClick={onScrollToExecControl ?? onScrollToConnect}>Go to Execution Control</button>
                 )}
                 {idx === 2 && step.status === "pending" && (
                   <span className="checklist-hint">Configure in the Optimise tab</span>
                 )}
-                {idx === 3 && step.status === "pending" && execStatus?.connected && onScrollToConnect && (
-                  <button className="btn-inline" onClick={onScrollToConnect}>Go to Execution Control</button>
+                {idx === 3 && step.status === "pending" && execStatus?.connected && (onScrollToExecControl || onScrollToConnect) && (
+                  <button className="btn-inline" onClick={onScrollToExecControl ?? onScrollToConnect}>Go to Execution Control</button>
                 )}
                 {idx === 4 && stepsReady && !runOnceDone && (
                   <button

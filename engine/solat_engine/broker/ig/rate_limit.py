@@ -7,6 +7,7 @@ Implements a token bucket algorithm to enforce rate limits.
 import asyncio
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -105,7 +106,7 @@ class RateLimiter:
         return wait_time
 
     @property
-    def stats(self) -> dict:
+    def stats(self) -> dict[str, Any]:
         """Get rate limiter statistics."""
         return {
             "total_requests": self._total_requests,

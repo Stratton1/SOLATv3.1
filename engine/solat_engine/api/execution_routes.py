@@ -16,7 +16,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from solat_engine.broker.ig.client import AsyncIGClient
+from solat_engine.broker.ig.client import AsyncIGClient, IGAPIError, IGAuthError
 from solat_engine.config import Settings, get_settings_dep
 from solat_engine.execution.gates import GateMode, get_trading_gates
 from solat_engine.execution.models import (
@@ -64,8 +64,15 @@ def get_execution_router(
     if _execution_router is None or _execution_router._data_dir != settings.data_dir:
         _execution_router = ExecutionRouter(config, settings.data_dir)
     else:
-        # Update config reference in case it was overridden
-        _execution_router.config = config
+        # Keep singleton in sync with latest validated settings-derived config.
+        _execution_router.update_config(config)
+    
+    # Notify Autopilot service (only if changed)
+    from solat_engine.autopilot.service import get_autopilot_service
+    autopilot = get_autopilot_service()
+    if autopilot and autopilot._execution_router != _execution_router:
+        autopilot.set_execution_router(_execution_router)
+        
     return _execution_router
 
 
@@ -75,8 +82,8 @@ def get_ig_client(settings: Settings = Depends(get_settings_dep)) -> AsyncIGClie
     if _ig_client is None:
         _ig_client = AsyncIGClient(settings, logger)
     else:
-        # Update settings reference
-        _ig_client.settings = settings
+        # Keep singleton in sync with latest settings (tests/env overrides).
+        _ig_client.update_settings(settings)
     return _ig_client
 
 
@@ -473,9 +480,26 @@ async def connect(
     # Login to IG
     try:
         await ig_client.login()
+    except IGAuthError as e:
+        # Invalid or missing credentials should be reported as auth failures,
+        # not internal server errors.
+        logger.warning("IG login auth failed: %s", e)
+        raise HTTPException(
+            status_code=401,
+            detail="Broker authentication failed. Check IG DEMO credentials.",
+        )
+    except IGAPIError as e:
+        logger.error("IG login API error: %s", e)
+        raise HTTPException(
+            status_code=502,
+            detail="Broker API unavailable during login. Please retry.",
+        )
     except Exception as e:
-        logger.error("IG login failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"Login failed: {e}")
+        logger.exception("Unexpected IG login failure")
+        raise HTTPException(
+            status_code=500,
+            detail="Unexpected broker login failure",
+        )
 
     # Connect execution router
     result = await exec_router.connect(ig_client, settings=settings)

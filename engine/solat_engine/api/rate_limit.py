@@ -272,11 +272,11 @@ def get_overlay_cache() -> ResponseCache:
 
 
 def get_signals_cache() -> ResponseCache:
-    """Get signals cache (10s TTL)."""
+    """Get signals cache (30s TTL — strategy signal computation is expensive)."""
     global _signals_cache
     if _signals_cache is None:
         _signals_cache = ResponseCache(
-            ttl_seconds=10.0,
+            ttl_seconds=30.0,
             max_entries=100,
             name="signals",
         )

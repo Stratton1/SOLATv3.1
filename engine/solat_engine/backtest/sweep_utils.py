@@ -501,7 +501,7 @@ def _diversified_select(
         return _df_to_picks(df.head(top_n))
 
     # Group, keeping each group sorted by rank
-    groups: dict[tuple, pd.DataFrame] = {}
+    groups: dict[tuple[Any, ...], pd.DataFrame] = {}
     for key, group_df in df.groupby(valid_cols):
         if not isinstance(key, tuple):
             key = (key,)

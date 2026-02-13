@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from solat_engine.config import get_settings
+from solat_engine.config import TradingMode, get_settings
 from solat_engine.data.models import SupportedTimeframe
 from solat_engine.execution.models import (
     ExecutionConfig,
@@ -55,7 +55,7 @@ class PreLiveChecker:
     Runs a series of checks to verify system readiness.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize checker."""
         self._settings = get_settings()
         self._results: list[CheckResult] = []
@@ -93,7 +93,8 @@ class PreLiveChecker:
             store = ParquetStore(self._settings.data_dir)
 
             # Check for any symbols
-            symbols = store.list_symbols()
+            summaries = store.get_summary()
+            symbols = sorted({str(s.get("symbol")) for s in summaries if s.get("symbol")})
             if not symbols:
                 self._results.append(CheckResult(
                     name="Parquet Store",
@@ -155,7 +156,7 @@ class PreLiveChecker:
 
             from solat_engine.broker.ig.client import AsyncIGClient
 
-            client = AsyncIGClient()
+            client = AsyncIGClient(self._settings, logger)
 
             # Try to get session
             await client.ensure_session()
@@ -203,7 +204,7 @@ class PreLiveChecker:
         try:
             mode = self._settings.mode
 
-            if mode == ExecutionMode.DEMO:
+            if mode == TradingMode.DEMO:
                 self._results.append(CheckResult(
                     name="Execution Config",
                     passed=True,
@@ -249,15 +250,15 @@ class PreLiveChecker:
                 size=0.5,
                 order_type=OrderType.MARKET,
                 bot="test_bot",
-                ts_created=datetime.now(UTC),
+                timestamp=datetime.now(UTC),
             )
 
             # Check valid intent should pass
             result = risk_engine.check_intent(
                 valid_intent,
-                positions=[],
+                current_positions=[],
                 account_balance=10000.0,
-                realized_pnl=0.0,
+                realized_pnl_today=0.0,
             )
 
             if not result.allowed:
@@ -278,14 +279,14 @@ class PreLiveChecker:
                 size=100.0,  # Way over max
                 order_type=OrderType.MARKET,
                 bot="test_bot",
-                ts_created=datetime.now(UTC),
+                timestamp=datetime.now(UTC),
             )
 
             result = risk_engine.check_intent(
                 oversized_intent,
-                positions=[],
+                current_positions=[],
                 account_balance=10000.0,
-                realized_pnl=0.0,
+                realized_pnl_today=0.0,
             )
 
             if result.allowed and result.adjusted_size == 100.0:
@@ -322,7 +323,7 @@ class PreLiveChecker:
             try:
                 from solat_engine.broker.ig.client import AsyncIGClient
 
-                client = AsyncIGClient()
+                client = AsyncIGClient(self._settings, logger)
                 await client.ensure_session()
 
                 self._results.append(CheckResult(

@@ -7,6 +7,7 @@ Represents an executed portion of an order.
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -88,7 +89,7 @@ class Fill(BaseModel):
         default=False,
         description="Whether this fill is from backtesting",
     )
-    metadata: dict = Field(
+    metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional fill metadata",
     )

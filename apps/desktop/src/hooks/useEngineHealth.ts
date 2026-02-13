@@ -5,6 +5,7 @@
  * - Automatic reconnection with exponential backoff
  * - Connection state tracking
  * - Manual retry trigger
+ * - System resource utilization
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -18,11 +19,19 @@ const MAX_RETRY_DELAY_MS = 30000;
 const BACKOFF_MULTIPLIER = 1.5;
 const POLL_INTERVAL_MS = 5000;
 
+export interface SystemMetrics {
+  cpu_pct: number;
+  memory_usage_mb: number;
+  disk_free_gb: number;
+  process_id: number;
+}
+
 export interface HealthData {
   status: string;
   version: string;
   time: string;
   uptime_seconds: number;
+  system?: SystemMetrics;
 }
 
 export interface ConfigData {

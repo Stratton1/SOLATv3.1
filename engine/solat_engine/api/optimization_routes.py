@@ -24,6 +24,7 @@ from solat_engine.optimization.models import (
     WindowType,
 )
 from solat_engine.optimization.walk_forward import WalkForwardEngine
+from solat_engine.scheduler.service import SchedulerService
 
 router = APIRouter(prefix="/optimization", tags=["Optimization"])
 logger = get_logger(__name__)
@@ -418,7 +419,7 @@ async def get_allowlist_entries(
 @router.get("/allowlist/grouped")
 async def get_allowlist_grouped(
     manager: AllowlistManager = Depends(get_allowlist_manager),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Get allowlist entries grouped by symbol.
 
@@ -565,16 +566,16 @@ async def clear_allowlist(
 # Scheduler & Proposal Routes
 # =============================================================================
 
-_scheduler_service = None
+_scheduler_service: SchedulerService | None = None
 
 
-def get_scheduler_service():
+def get_scheduler_service() -> SchedulerService | None:
     """Get the global scheduler service (set by main.py lifespan)."""
     global _scheduler_service
     return _scheduler_service
 
 
-def set_scheduler_service(svc) -> None:
+def set_scheduler_service(svc: SchedulerService | None) -> None:
     """Set the global scheduler service (called from main.py lifespan)."""
     global _scheduler_service
     _scheduler_service = svc

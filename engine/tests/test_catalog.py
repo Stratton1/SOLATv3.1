@@ -224,6 +224,31 @@ class TestCatalogueStore:
         assert result2["skipped"] == 1
         assert result2["total"] == 1
 
+    def test_store_bootstrap_is_live(self, store: CatalogueStore) -> None:
+        """Bootstrap should use live epics when is_live=True."""
+        seeds = [
+            CatalogueSeedItem(
+                symbol="EURUSD",
+                display_name="EUR/USD",
+                asset_class=AssetClass.FX,
+                search_hint="EUR/USD",
+                demo_epic="DEMO_EPIC",
+                live_epic="LIVE_EPIC",
+            ),
+        ]
+        
+        # Test LIVE bootstrap
+        store.clear()
+        store.bootstrap(seeds, is_live=True)
+        item = store.get("EURUSD")
+        assert item.epic == "LIVE_EPIC"
+        
+        # Test DEMO bootstrap
+        store.clear()
+        store.bootstrap(seeds, is_live=False)
+        item = store.get("EURUSD")
+        assert item.epic == "DEMO_EPIC"
+
     def test_store_get_by_asset_class(self, store: CatalogueStore) -> None:
         """Get by asset class should filter correctly."""
         items = [

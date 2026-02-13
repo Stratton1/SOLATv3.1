@@ -379,7 +379,7 @@ class Settings(BaseSettings):
             blockers.append("MAX_TRADES_PER_HOUR must be positive")
         return blockers
 
-    def get_redacted_config(self) -> dict:
+    def get_redacted_config(self) -> dict[str, str | int | bool]:
         """
         Get configuration dict with sensitive values redacted.
         Safe for logging and API responses.

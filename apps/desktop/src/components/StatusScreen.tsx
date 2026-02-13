@@ -4,22 +4,38 @@ import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { ExecutionPanel } from "./ExecutionPanel";
 import { InfoTip } from "./InfoTip";
 import { useAutopilot } from "../hooks/useAutopilot";
-import { useFlashOnChange } from "../hooks/useFlashOnChange";
 import { useTerminalSignals } from "../hooks/useTerminalSignals";
 import { useAllowlist } from "../hooks/useAllowlist";
-import { useIgStatus } from "../hooks/useIgStatus";
+import { useBrokerStatus } from "../hooks/useBrokerStatus";
+import { useRiskGates } from "../hooks/useRiskGates";
 import { useToast } from "../context/ToastContext";
 import { engineClient } from "../lib/engineClient";
+
+// Modular status cards
+import { MissionControlHeader } from "./status/MissionControlHeader";
+import { SystemHealthCard } from "./status/SystemHealthCard";
+import { RiskGateMonitor } from "./status/RiskGateMonitor";
+import { BrokerConnectivityCard } from "./status/BrokerConnectivityCard";
+import { EventLogCard } from "./status/EventLogCard";
+import { DataLibraryCard } from "./status/DataLibraryCard";
 
 // =============================================================================
 // Types
 // =============================================================================
+
+interface SystemMetrics {
+  cpu_pct: number;
+  memory_usage_mb: number;
+  disk_free_gb: number;
+  process_id: number;
+}
 
 interface HealthData {
   status: string;
   version: string;
   time: string;
   uptime_seconds: number;
+  system?: SystemMetrics;
 }
 
 interface ConfigData {
@@ -44,96 +60,6 @@ interface StatusScreenProps {
 // =============================================================================
 // Sub-components
 // =============================================================================
-
-const ConnectivityLEDs = memo(function ConnectivityLEDs({
-  health,
-  igConfigured,
-  igAuthenticated,
-  wsConnected,
-}: {
-  health: HealthData | null;
-  igConfigured: boolean;
-  igAuthenticated: boolean;
-  wsConnected: boolean;
-}) {
-  return (
-    <div className="led-group">
-      <div className="led-item">
-        <div className={`led ${health?.status === "healthy" ? "active" : "error"}`} />
-        ENGINE REST
-      </div>
-      <div className="led-item">
-        <div className={`led ${wsConnected ? "active" : "error"}`} />
-        WEBSOCKET
-      </div>
-      <div className="led-item">
-        <div className={`led ${igAuthenticated ? "active" : igConfigured ? "warning" : "error"}`} />
-        IG BROKER
-      </div>
-    </div>
-  );
-});
-
-const ConnectivityCard = memo(function ConnectivityCard({
-  health,
-  config,
-  igAuthenticated,
-  heartbeatCount,
-  formatUptime,
-}: {
-  health: HealthData | null;
-  config: ConfigData | null;
-  igAuthenticated: boolean;
-  heartbeatCount: number;
-  formatUptime: (s: number) => string;
-}) {
-  const flashClass = useFlashOnChange(heartbeatCount);
-
-  return (
-    <div className="terminal-card">
-      <div className="terminal-card-header">
-        <span className="terminal-card-title">
-          System Connectivity
-          <InfoTip text="Core connectivity status for the trading engine and data feeds. Green indicators mean the system is ready for operation." />
-        </span>
-      </div>
-      <div className="terminal-card-body">
-        <div className="dense-row">
-          <span className="dense-label">Engine REST</span>
-          <span className={`dense-value ${health?.status === "healthy" ? "text-green" : "text-red"}`}>
-            {health?.status === "healthy" ? "HEALTHY" : "OFFLINE"}
-          </span>
-        </div>
-        <div className="dense-row">
-          <span className="dense-label">Uptime</span>
-          <span className="dense-value num tabular-nums">{formatUptime(health?.uptime_seconds ?? 0)}</span>
-        </div>
-        <div className="dense-row">
-          <span className="dense-label">WebSocket</span>
-          <span className={`dense-value num tabular-nums ${flashClass}`}>{heartbeatCount} HB</span>
-        </div>
-        <div className="dense-row" style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border-color)" }}>
-          <span className="dense-label">IG Configured</span>
-          <span className={`dense-value ${config?.ig_configured ? "text-green" : "text-yellow"}`}>
-            {config?.ig_configured ? "YES" : "NO"}
-          </span>
-        </div>
-        <div className="dense-row">
-          <span className="dense-label">IG Auth</span>
-          <span className={`dense-value ${igAuthenticated ? "text-green" : "text-red"}`}>
-            {igAuthenticated ? "AUTHENTICATED" : "NOT LOGGED IN"}
-          </span>
-        </div>
-        <div className="dense-row">
-          <span className="dense-label">Account Mode</span>
-          <span className={`dense-value ${config?.mode === "LIVE" ? "text-red" : "text-green"}`}>
-            {config?.mode ?? "\u2014"}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-});
 
 const ActionPanel = memo(function ActionPanel({
   onStartEngine,
@@ -169,7 +95,7 @@ const ActionPanel = memo(function ActionPanel({
       const bundle = await engineClient.getDiagnosticsBundle();
       await navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
       showToast("Diagnostics copied to clipboard", "success");
-    } catch (e) {
+    } catch {
       showToast("Failed to copy diagnostics", "error");
     }
   };
@@ -315,7 +241,7 @@ function AutopilotStatus() {
 }
 
 function AllowlistGrid() {
-  const { grouped, isLoading, error } = useAllowlist();
+  const { allowlist, isLoading, error } = useAllowlist();
 
   return (
     <div className="terminal-card" style={{ flex: 1, minHeight: "150px", overflow: "hidden" }}>
@@ -332,23 +258,15 @@ function AllowlistGrid() {
               <div className="skeleton" style={{ height: 100 }} />
             ) : error ? (
               <div style={{ color: "var(--accent-red)", fontSize: 11 }}>{error}</div>
-            ) : grouped.length === 0 ? (
+            ) : allowlist.length === 0 ? (
               <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 11, padding: 20 }}>
                 NO ACTIVE TRADING COMBOS
               </div>
             ) : (
-              <div className="allowlist-grouped-grid">
-                {grouped.map((group) => (
-                  <div key={group.symbol} className="allowlist-symbol-group">
-                    <div className="allowlist-symbol-header">{group.symbol}</div>
-                    <div className="allowlist-symbol-entries">
-                      {group.bots.map((entry) => (
-                        <div key={entry.combo_id} className={`allowlist-entry-tag ${entry.enabled ? "active" : "disabled"}`}>
-                          <span className="entry-bot">{entry.bot}</span>
-                          <span className="entry-tf">{entry.timeframe}</span>
-                        </div>
-                      ))}
-                    </div>
+              <div className="allowlist-symbol-entries" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {allowlist.map((symbol) => (
+                  <div key={symbol} className="allowlist-entry-tag active">
+                    <span className="entry-bot">{symbol}</span>
                   </div>
                 ))}
               </div>
@@ -360,6 +278,7 @@ function AllowlistGrid() {
   );
 }
 
+
 // =============================================================================
 // Main Component
 // =============================================================================
@@ -367,18 +286,20 @@ function AllowlistGrid() {
 export function StatusScreen({
   health,
   config,
-  heartbeatCount,
+  heartbeatCount: _heartbeatCount,
   isLoading,
   error,
   wsConnected,
   onStartEngine,
   isStartingEngine = false,
 }: StatusScreenProps) {
-  const { data: igStatus } = useIgStatus();
+  const { data: brokerStatus, isLoading: brokerLoading, refetch: refetchBroker } = useBrokerStatus();
+  const { data: riskGates, isLoading: gatesLoading } = useRiskGates();
   const execCardRef = useRef<HTMLDivElement>(null);
+  const brokerCardRef = useRef<HTMLDivElement>(null);
 
-  const scrollToExecControl = useCallback(() => {
-    const card = execCardRef.current;
+  const flashAndScroll = useCallback((ref: React.RefObject<HTMLDivElement | null>) => {
+    const card = ref.current;
     if (!card) return;
     card.scrollIntoView({ behavior: "smooth", block: "nearest" });
     card.classList.add("highlight-flash");
@@ -388,6 +309,9 @@ export function StatusScreen({
     };
     card.addEventListener("animationend", cleanup);
   }, []);
+
+  const scrollToBrokerCard = useCallback(() => flashAndScroll(brokerCardRef), [flashAndScroll]);
+  const scrollToExecControl = useCallback(() => flashAndScroll(execCardRef), [flashAndScroll]);
 
   if (isLoading) {
     return (
@@ -433,36 +357,41 @@ export function StatusScreen({
 
   return (
     <div className="status-dashboard">
-      {/* Header Area */}
-      <header className="status-dashboard-header">
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <h2 style={{ fontSize: 12, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "0.1em" }}>MISSION CONTROL</h2>
-          <span className="card-badge" style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)", fontSize: 9 }}>
-            {config?.env?.toUpperCase()}
-          </span>
-        </div>
-        <ConnectivityLEDs
-          health={health}
-          igConfigured={config?.ig_configured ?? false}
-          igAuthenticated={igStatus?.authenticated ?? false}
-          wsConnected={wsConnected}
-        />
-      </header>
+      <MissionControlHeader
+        health={health}
+        config={config}
+        wsConnected={wsConnected}
+        brokerAuthenticated={brokerStatus?.authenticated ?? false}
+      />
 
-      {/* Left Column: Connectivity & Actions */}
+      {/* Left Column: Connectivity & Safety */}
       <aside className="status-dashboard-left">
-        <ConnectivityCard
-          health={health}
-          config={config}
-          igAuthenticated={igStatus?.authenticated ?? false}
-          heartbeatCount={heartbeatCount}
-          formatUptime={formatUptime}
+        <SystemHealthCard
+          metrics={health?.system}
+          uptime={formatUptime(health?.uptime_seconds ?? 0)}
+        />
+        <div ref={brokerCardRef}>
+          <BrokerConnectivityCard
+            status={brokerStatus}
+            isLoading={brokerLoading}
+            onLoginSuccess={refetchBroker}
+          />
+        </div>
+        <RiskGateMonitor
+          gates={riskGates}
+          isLoading={gatesLoading}
         />
         <ActionPanel
           onStartEngine={onStartEngine}
           isStartingEngine={isStartingEngine}
           engineHealthy={health?.status === "healthy"}
         />
+      </aside>
+
+      {/* Middle Column: Trading Activity */}
+      <main className="status-dashboard-mid">
+        <TerminalSignalsTable />
+        <AllowlistGrid />
         <div ref={execCardRef} className="terminal-card" style={{ flexShrink: 0 }}>
           <div className="terminal-card-header">
             <span className="terminal-card-title">
@@ -474,17 +403,13 @@ export function StatusScreen({
             <ExecutionPanel igConfigured={config?.ig_configured ?? false} />
           </div>
         </div>
-      </aside>
-
-      {/* Middle Column: Signals & Autopilot */}
-      <main className="status-dashboard-mid">
-        <TerminalSignalsTable />
-        <AllowlistGrid />
         <AutopilotStatus />
+        <DataLibraryCard />
       </main>
 
-      {/* Right Column: Checklist & Diagnostics */}
+      {/* Right Column: Event Logs & Checklist */}
       <aside className="status-dashboard-right">
+        <EventLogCard />
         <div className="terminal-card" style={{ flexShrink: 0 }}>
           <div className="terminal-card-header">
             <span className="terminal-card-title">
@@ -493,13 +418,13 @@ export function StatusScreen({
             </span>
           </div>
           <div className="terminal-card-body">
-            <DemoChecklist onScrollToConnect={scrollToExecControl} />
+            <DemoChecklist onScrollToBroker={scrollToBrokerCard} onScrollToExecControl={scrollToExecControl} />
           </div>
         </div>
         <div className="terminal-card" style={{ flex: 1, minHeight: "200px" }}>
           <div className="terminal-card-header">
             <span className="terminal-card-title">
-              System Diagnostics
+              Diagnostic Bundle
               <InfoTip text="Detailed internal state and event logs. Use for troubleshooting engine or data feed issues." />
             </span>
           </div>

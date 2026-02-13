@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from solat_engine.config import Settings, TradingMode, get_settings
+from solat_engine.catalog.store import CatalogueStore
 from solat_engine.execution.gates import GateMode, get_trading_gates
 from solat_engine.execution.kill_switch import KillSwitch
 from solat_engine.execution.ledger import ExecutionLedger
@@ -71,6 +72,7 @@ class ExecutionRouter:
         # Initialize components
         self._risk_engine = RiskEngine(config)
         self._kill_switch = KillSwitch(config)
+        self._catalogue_store = CatalogueStore()
 
         # Restore kill switch state from disk (if exists)
         kill_switch_state_file = data_dir / "execution" / "kill_switch_state.json"
@@ -171,6 +173,22 @@ class ExecutionRouter:
 
             account = accounts[0]
             self._state.account_id = account.get("accountId", account.get("account_id"))
+            
+            # Sync catalogue metadata to risk engine
+            for item in self._catalogue_store.load():
+                self._risk_engine.set_symbol_metadata(
+                    item.symbol,
+                    lot_size=float(item.lot_size) if item.lot_size else 1.0,
+                    margin_factor=float(item.margin_factor) if item.margin_factor else 100.0
+                )
+                if item.dealing_rules:
+                    self._risk_engine.set_dealing_rules(
+                        item.symbol,
+                        min_size=float(item.dealing_rules.min_deal_size) if item.dealing_rules.min_deal_size else 0.01,
+                        max_size=float(item.dealing_rules.max_deal_size) if item.dealing_rules.max_deal_size else 1000.0,
+                        size_step=float(item.dealing_rules.min_size_increment) if item.dealing_rules.min_size_increment else 0.01
+                    )
+
             self._state.account_balance = float(account.get("balance", {}).get("balance", 0))
             self._account_balance = self._state.account_balance
             self._balance_last_updated = datetime.now(UTC)
@@ -427,34 +445,41 @@ class ExecutionRouter:
                 positions = self._kill_switch.get_positions_to_close(
                     self._position_store.positions
                 )
-                failed_closes: list[str] = []
-                for pos in positions:
-                    closed = False
-                    for attempt in range(3):
-                        try:
-                            await self.close_position(pos.deal_id)
-                            closed = True
-                            break
-                        except Exception as e:
-                            logger.error(
-                                "Failed to close position %s (attempt %d/3): %s",
-                                pos.deal_id, attempt + 1, e,
-                            )
-                            if attempt < 2:
-                                await asyncio.sleep(1)
-                    if not closed:
-                        failed_closes.append(pos.deal_id)
+                
+                logger.debug("KILL SWITCH: Found %d positions to close", len(positions))
+                
+                if positions:
+                    logger.warning("KILL SWITCH: Commencing parallel liquidation of %d positions", len(positions))
+                    
+                    # Define a helper for retrying a single close
+                    async def close_with_retry(pos: PositionView):
+                        for attempt in range(3):
+                            try:
+                                await self.close_position(pos.deal_id)
+                                return None  # Success
+                            except Exception as e:
+                                logger.error("Failed to close %s (attempt %d/3): %s", pos.deal_id, attempt+1, e)
+                                if attempt < 2:
+                                    await asyncio.sleep(0.5)
+                        return pos.deal_id  # Failed after all retries
 
-                if failed_closes:
-                    logger.critical(
-                        "KILL SWITCH: %d/%d positions failed to close: %s",
-                        len(failed_closes), len(positions), failed_closes,
-                    )
-                    await self._emit_event({
-                        "type": "kill_switch_close_failed",
-                        "failed_deal_ids": failed_closes,
-                        "total_positions": len(positions),
-                    })
+                    # Run all closures in parallel
+                    results = await asyncio.gather(*[close_with_retry(p) for p in positions])
+                    
+                    failed_closes = [r for r in results if r is not None]
+
+                    if failed_closes:
+                        logger.critical(
+                            "KILL SWITCH: %d/%d positions failed to close: %s",
+                            len(failed_closes), len(positions), failed_closes,
+                        )
+                        await self._emit_event({
+                            "type": "kill_switch_close_failed",
+                            "failed_deal_ids": failed_closes,
+                            "total_positions": len(positions),
+                        })
+                    else:
+                        logger.info("KILL SWITCH: All positions liquidated successfully")
 
         return result
 
@@ -801,17 +826,14 @@ class ExecutionRouter:
             return {"ok": False, "error": str(e)}
 
     def _resolve_epic(self, symbol: str) -> str:
-        """Resolve symbol to IG epic."""
-        # Simple mapping for common forex pairs
-        epic_map = {
-            "EURUSD": "CS.D.EURUSD.MINI.IP",
-            "GBPUSD": "CS.D.GBPUSD.MINI.IP",
-            "USDJPY": "CS.D.USDJPY.MINI.IP",
-            "AUDUSD": "CS.D.AUDUSD.MINI.IP",
-            "USDCAD": "CS.D.USDCAD.MINI.IP",
-            "USDCHF": "CS.D.USDCHF.MINI.IP",
-        }
-        return epic_map.get(symbol, f"CS.D.{symbol}.MINI.IP")
+        """Resolve symbol to IG epic using catalogue."""
+        item = self._catalogue_store.get(symbol)
+        if item and item.epic:
+            return item.epic
+
+        # Fallback to pattern-based resolution if not in catalogue
+        suffix = "TODAY.IP" if self._state.mode == ExecutionMode.LIVE else "MINI.IP"
+        return f"CS.D.{symbol}.{suffix}"
 
     def _redact_response(self, response: dict[str, Any]) -> dict[str, Any]:
         """Redact sensitive data from broker response."""

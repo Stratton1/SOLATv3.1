@@ -97,9 +97,53 @@ setup_ui() {
     log_success "UI ready"
 }
 
+cleanup_stale_engine_pid() {
+    if [ -f "$ROOT_DIR/.engine.pid" ]; then
+        OLD_PID=$(cat "$ROOT_DIR/.engine.pid")
+        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+            log_warn "Stopping stale engine process (PID: $OLD_PID)..."
+            kill "$OLD_PID" 2>/dev/null || true
+            sleep 1
+        fi
+        rm -f "$ROOT_DIR/.engine.pid"
+    fi
+}
+
+ensure_port_free() {
+    local port=8765
+    if command -v lsof &> /dev/null; then
+        local pids
+        pids=$(lsof -ti :"$port" 2>/dev/null || true)
+        if [ -n "$pids" ]; then
+            log_warn "Port $port is in use. Releasing..."
+            echo "$pids" | xargs kill -9 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+}
+
+wait_for_engine_ready() {
+    local retries=30
+    local delay=1
+    local health_url="http://127.0.0.1:8765/health"
+
+    for ((i=1; i<=retries; i++)); do
+        if curl -sf --max-time 2 "$health_url" > /dev/null; then
+            log_success "Engine health check passed"
+            return 0
+        fi
+        sleep "$delay"
+    done
+
+    log_warn "Engine health check timed out; starting UI anyway"
+    return 1
+}
+
 # Start the Python engine
 start_engine() {
     log_info "Starting Python engine on http://127.0.0.1:8765..."
+    cleanup_stale_engine_pid
+    ensure_port_free
     cd "$ROOT_DIR/engine"
     uv run uvicorn solat_engine.main:app --host 127.0.0.1 --port 8765 --reload &
     ENGINE_PID=$!
@@ -111,8 +155,7 @@ start_engine() {
 start_ui() {
     log_info "Starting Tauri development server..."
     cd "$ROOT_DIR"
-    # Wait for engine to be ready
-    sleep 2
+    wait_for_engine_ready || true
     pnpm --filter solat-desktop tauri dev
 }
 

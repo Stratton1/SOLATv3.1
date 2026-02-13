@@ -502,6 +502,8 @@ class LightstreamerClient:
         """Send subscription to Lightstreamer."""
         if self._session_id == "SIMULATION":
             return
+        if not self._session_id:
+            return
 
         sub_id = self._next_sub_id
         self._next_sub_id += 1
@@ -522,6 +524,8 @@ class LightstreamerClient:
     async def _send_unsubscription(self, epic: str) -> None:
         """Send unsubscription to Lightstreamer."""
         if self._session_id == "SIMULATION":
+            return
+        if not self._session_id:
             return
 
         sub_id = self._subscription_ids.pop(epic, None)

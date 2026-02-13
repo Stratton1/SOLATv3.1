@@ -18,8 +18,6 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from solat_engine.config import Settings, TradingMode
-from solat_engine.main import app
 from solat_engine.optimization.models import (
     WalkForwardConfig,
     WalkForwardResult,
@@ -73,14 +71,16 @@ def _make_completed_wfo(run_id: str = "wf-test1") -> WalkForwardResult:
     )
 
 
-@pytest.fixture
-def tmp_settings(tmp_path):
-    return Settings(mode=TradingMode.DEMO, data_dir=tmp_path)
+# =============================================================================
+# Fixtures
+# =============================================================================
 
 
-@pytest.fixture
-def live_settings(tmp_path):
-    return Settings(mode=TradingMode.LIVE, data_dir=tmp_path)
+@pytest.fixture(autouse=True)
+def reset_recommendation_singletons():
+    """Reset recommendation singletons between tests."""
+    from solat_engine.api import recommendation_routes
+    recommendation_routes._recommended_set_manager = None
 
 
 @pytest.fixture
@@ -92,52 +92,29 @@ def mock_wf_engine():
 
 
 @pytest.fixture
-def client(tmp_path, tmp_settings, mock_wf_engine):
-    """Test client with overridden deps."""
+def app_client_rec(app_client: TestClient, mock_settings, mock_wf_engine, overrider):
+    """Test client with recommendation-specific overrides."""
     from solat_engine.api.recommendation_routes import (
         get_recommended_set_manager,
         get_wf_engine_for_recommendations,
-        set_recommended_set_manager,
     )
-    from solat_engine.config import get_settings_dep
 
-    mgr = RecommendedSetManager(data_dir=tmp_path)
+    mgr = RecommendedSetManager(data_dir=mock_settings.data_dir)
 
-    app.dependency_overrides[get_settings_dep] = lambda: tmp_settings
-    app.dependency_overrides[get_wf_engine_for_recommendations] = lambda: mock_wf_engine
-    app.dependency_overrides[get_recommended_set_manager] = lambda: mgr
+    overrider.override(get_wf_engine_for_recommendations, lambda: mock_wf_engine)
+    overrider.override(get_recommended_set_manager, lambda: mgr)
 
-    yield TestClient(app, raise_server_exceptions=False)
-
-    app.dependency_overrides.clear()
-    set_recommended_set_manager(None)
+    return app_client
 
 
-@pytest.fixture
-def live_client(tmp_path, live_settings, mock_wf_engine):
-    """Test client in LIVE mode."""
-    from solat_engine.api.recommendation_routes import (
-        get_recommended_set_manager,
-        get_wf_engine_for_recommendations,
-        set_recommended_set_manager,
-    )
-    from solat_engine.config import get_settings_dep
-
-    mgr = RecommendedSetManager(data_dir=tmp_path)
-
-    app.dependency_overrides[get_settings_dep] = lambda: live_settings
-    app.dependency_overrides[get_wf_engine_for_recommendations] = lambda: mock_wf_engine
-    app.dependency_overrides[get_recommended_set_manager] = lambda: mgr
-
-    yield TestClient(app, raise_server_exceptions=False)
-
-    app.dependency_overrides.clear()
-    set_recommended_set_manager(None)
+# =============================================================================
+# Tests
+# =============================================================================
 
 
 class TestGenerateRecommendations:
-    def test_generate_returns_set(self, client):
-        resp = client.post(
+    def test_generate_returns_set(self, app_client_rec):
+        resp = app_client_rec.post(
             "/optimization/recommendations/generate",
             json={"wfo_run_ids": ["wf-test1"]},
         )
@@ -149,8 +126,8 @@ class TestGenerateRecommendations:
         assert data["rejected_count"] == 0
         assert "wf-test1" in data["source_run_ids"]
 
-    def test_generate_with_custom_constraints(self, client):
-        resp = client.post(
+    def test_generate_with_custom_constraints(self, app_client_rec):
+        resp = app_client_rec.post(
             "/optimization/recommendations/generate",
             json={
                 "wfo_run_ids": ["wf-test1"],
@@ -163,19 +140,19 @@ class TestGenerateRecommendations:
         assert len(data["combos"]) == 1
         assert data["combos"][0]["symbol"] == "EURUSD"
 
-    def test_generate_wfo_not_found(self, client, mock_wf_engine):
+    def test_generate_wfo_not_found(self, app_client_rec, mock_wf_engine):
         mock_wf_engine.get_result.return_value = None
-        resp = client.post(
+        resp = app_client_rec.post(
             "/optimization/recommendations/generate",
             json={"wfo_run_ids": ["wf-missing"]},
         )
         assert resp.status_code == 404
 
-    def test_generate_wfo_not_completed(self, client, mock_wf_engine):
+    def test_generate_wfo_not_completed(self, app_client_rec, mock_wf_engine):
         result = _make_completed_wfo()
         result.status = "running"
         mock_wf_engine.get_result.return_value = result
-        resp = client.post(
+        resp = app_client_rec.post(
             "/optimization/recommendations/generate",
             json={"wfo_run_ids": ["wf-test1"]},
         )
@@ -183,56 +160,56 @@ class TestGenerateRecommendations:
 
 
 class TestGetRecommendations:
-    def test_get_latest_empty(self, client):
-        resp = client.get("/optimization/recommendations/latest")
+    def test_get_latest_empty(self, app_client_rec):
+        resp = app_client_rec.get("/optimization/recommendations/latest")
         assert resp.status_code == 404
 
-    def test_get_by_id(self, client):
+    def test_get_by_id(self, app_client_rec):
         # Generate first
-        gen_resp = client.post(
+        gen_resp = app_client_rec.post(
             "/optimization/recommendations/generate",
             json={"wfo_run_ids": ["wf-test1"]},
         )
         rec_id = gen_resp.json()["id"]
 
-        resp = client.get(f"/optimization/recommendations/{rec_id}")
+        resp = app_client_rec.get(f"/optimization/recommendations/{rec_id}")
         assert resp.status_code == 200
         assert resp.json()["id"] == rec_id
 
-    def test_get_latest_after_generate(self, client):
-        client.post(
+    def test_get_latest_after_generate(self, app_client_rec):
+        app_client_rec.post(
             "/optimization/recommendations/generate",
             json={"wfo_run_ids": ["wf-test1"]},
         )
-        resp = client.get("/optimization/recommendations/latest")
+        resp = app_client_rec.get("/optimization/recommendations/latest")
         assert resp.status_code == 200
         assert resp.json()["status"] == "pending"
 
-    def test_list_all(self, client):
-        client.post(
+    def test_list_all(self, app_client_rec):
+        app_client_rec.post(
             "/optimization/recommendations/generate",
             json={"wfo_run_ids": ["wf-test1"]},
         )
-        resp = client.get("/optimization/recommendations")
+        resp = app_client_rec.get("/optimization/recommendations")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
         assert "combos_count" in data[0]
 
-    def test_get_by_id_not_found(self, client):
-        resp = client.get("/optimization/recommendations/recset-notexist")
+    def test_get_by_id_not_found(self, app_client_rec):
+        resp = app_client_rec.get("/optimization/recommendations/recset-notexist")
         assert resp.status_code == 404
 
 
 class TestApplyDemo:
-    def test_apply_demo_success(self, client):
-        gen_resp = client.post(
+    def test_apply_demo_success(self, app_client_rec):
+        gen_resp = app_client_rec.post(
             "/optimization/recommendations/generate",
             json={"wfo_run_ids": ["wf-test1"]},
         )
         rec_id = gen_resp.json()["id"]
 
-        resp = client.post(f"/optimization/recommendations/{rec_id}/apply-demo")
+        resp = app_client_rec.post(f"/optimization/recommendations/{rec_id}/apply-demo")
         assert resp.status_code == 200
         data = resp.json()
         assert data["ok"] is True
@@ -240,44 +217,46 @@ class TestApplyDemo:
         assert data["combos_applied"] == 2
 
         # Verify status changed
-        get_resp = client.get(f"/optimization/recommendations/{rec_id}")
+        get_resp = app_client_rec.get(f"/optimization/recommendations/{rec_id}")
         assert get_resp.json()["status"] == "applied"
 
-    def test_apply_demo_blocked_in_live(self, live_client):
-        gen_resp = live_client.post(
+    def test_apply_demo_blocked_in_live(self, app_client_rec, mock_settings):
+        mock_settings.mode = "LIVE"
+        
+        gen_resp = app_client_rec.post(
             "/optimization/recommendations/generate",
             json={"wfo_run_ids": ["wf-test1"]},
         )
         rec_id = gen_resp.json()["id"]
 
-        resp = live_client.post(f"/optimization/recommendations/{rec_id}/apply-demo")
+        resp = app_client_rec.post(f"/optimization/recommendations/{rec_id}/apply-demo")
         assert resp.status_code == 403
 
-    def test_apply_supersedes_previous(self, client):
+    def test_apply_supersedes_previous(self, app_client_rec):
         # Generate and apply first set
-        gen1 = client.post(
+        gen1 = app_client_rec.post(
             "/optimization/recommendations/generate",
             json={"wfo_run_ids": ["wf-test1"]},
         )
         id1 = gen1.json()["id"]
-        client.post(f"/optimization/recommendations/{id1}/apply-demo")
+        app_client_rec.post(f"/optimization/recommendations/{id1}/apply-demo")
 
         # Generate and apply second set
-        gen2 = client.post(
+        gen2 = app_client_rec.post(
             "/optimization/recommendations/generate",
             json={"wfo_run_ids": ["wf-test1"]},
         )
         id2 = gen2.json()["id"]
-        client.post(f"/optimization/recommendations/{id2}/apply-demo")
+        app_client_rec.post(f"/optimization/recommendations/{id2}/apply-demo")
 
         # First should be superseded
-        get1 = client.get(f"/optimization/recommendations/{id1}")
+        get1 = app_client_rec.get(f"/optimization/recommendations/{id1}")
         assert get1.json()["status"] == "superseded"
 
         # Second should be applied
-        get2 = client.get(f"/optimization/recommendations/{id2}")
+        get2 = app_client_rec.get(f"/optimization/recommendations/{id2}")
         assert get2.json()["status"] == "applied"
 
-    def test_apply_not_found(self, client):
-        resp = client.post("/optimization/recommendations/recset-notexist/apply-demo")
+    def test_apply_not_found(self, app_client_rec):
+        resp = app_client_rec.post("/optimization/recommendations/recset-notexist/apply-demo")
         assert resp.status_code == 404

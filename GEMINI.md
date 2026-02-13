@@ -5,7 +5,7 @@ SOLAT (Strategic Opportunistic Leveraged Algorithmic Trading) is a production-gr
 
 ### Key Technologies
 - **Backend (Trading Engine):** Python 3.11+, FastAPI, Pydantic, Parquet (Data storage), `uv` (Package management).
-- **Frontend (Desktop UI):** React, TypeScript, Vite, Tauri (Rust), `lightweight-charts`.
+- **Frontend (Desktop UI):** React, TypeScript, Vite, Tauri (Rust), `plotly.js-finance-dist`.
 - **Infrastructure:** Monorepo managed with `pnpm` workspaces.
 
 ### Architecture

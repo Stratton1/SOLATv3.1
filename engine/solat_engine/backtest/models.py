@@ -111,7 +111,7 @@ class BacktestRequest(BaseModel):
     bots: list[str] = Field(..., min_length=1, description="Bot names to run")
     initial_cash: float = Field(
         default=100000.0,
-        ge=1000.0,
+        ge=100.0,
         description="Starting capital",
         validation_alias=AliasChoices("initial_cash", "initial_capital"),
     )

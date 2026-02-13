@@ -148,7 +148,7 @@ Historical Data (Parquet)
 ### WebSocket
 - Heartbeat (1s interval)
 - Price updates (subscribed symbols)
-- Order events (created/filled/cancelled)
+- Execution events (`execution.status`, `execution.intent_created`, `execution.order_*`, `execution.positions_updated`, `execution.kill_switch_*`)
 - Position updates
 
 ## Security Model

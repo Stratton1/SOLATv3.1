@@ -30,8 +30,8 @@ def get_ig_client(settings: Settings = Depends(get_settings_dep)) -> AsyncIGClie
     if _ig_client is None:
         _ig_client = AsyncIGClient(settings, logger)
     else:
-        # Update settings reference in case it's overridden
-        _ig_client.settings = settings
+        # Keep singleton in sync with latest settings (tests/env overrides).
+        _ig_client.update_settings(settings)
     return _ig_client
 
 
@@ -235,11 +235,20 @@ async def ig_status(
 
     Returns connection state and rate limiter stats.
     """
+    # Estimate session expiry (approx 6 hours for IG)
+    expiry_ts = None
+    if client._session_created_at:
+        import datetime
+        expiry = client._session_created_at + datetime.timedelta(hours=6)
+        expiry_ts = expiry.isoformat()
+
     return {
         "configured": settings.has_ig_credentials,
         "mode": settings.ig_acc_type.value,
         "base_url": settings.ig_base_url,
         "authenticated": client.is_authenticated,
         "session_age_seconds": client.session_age_seconds,
+        "session_expiry_ts": expiry_ts,
         "rate_limiter": client.rate_limiter_stats,
+        "metrics": client.metrics,
     }

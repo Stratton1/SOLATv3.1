@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from solat_engine.backtest.models import SignalIntent
 from solat_engine.strategies.indicators import (
@@ -947,9 +947,11 @@ class Elite8StrategyFactory:
         if name not in ELITE_8_BOTS:
             available = ", ".join(ELITE_8_BOTS.keys())
             raise ValueError(f"Unknown bot '{name}'. Available: {available}")
+        bot_cls = ELITE_8_BOTS[name]
         if params is None:
-            return ELITE_8_BOTS[name](warmup_bars=warmup_bars)
-        return ELITE_8_BOTS[name](warmup_bars=warmup_bars, params=params)
+            return bot_cls(warmup_bars=warmup_bars)
+        # Bot constructors accept bot-specific params types.
+        return cast(Elite8BaseStrategy, cast(Any, bot_cls)(warmup_bars=warmup_bars, params=params))
 
     @staticmethod
     def list_bots() -> list[str]:

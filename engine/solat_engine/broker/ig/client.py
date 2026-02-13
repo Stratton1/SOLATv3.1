@@ -5,9 +5,10 @@ Handles authentication, token management, rate limiting, and retries.
 """
 
 import asyncio
+import time
 from datetime import datetime
 from logging import Logger
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -53,6 +54,14 @@ class IGAPIError(Exception):
         self.error_code = error_code
 
 
+from pydantic import SecretStr
+
+
+def _secret_value(v: SecretStr | None) -> str | None:
+    """Extract plain value from an optional SecretStr for comparison."""
+    return v.get_secret_value() if v is not None else None
+
+
 class AsyncIGClient:
     """
     Async client for IG REST API.
@@ -95,6 +104,25 @@ class AsyncIGClient:
         # Login response cache (without tokens)
         self._login_response: IGLoginResponse | None = None
 
+        # Latency tracking
+        self._last_latency_ms: int = 0
+        self._latency_history: list[int] = []
+        self._max_history = 100
+
+    @property
+    def metrics(self) -> dict[str, Any]:
+        """Get broker connection metrics."""
+        avg_latency = (
+            sum(self._latency_history) / len(self._latency_history)
+            if self._latency_history
+            else 0
+        )
+        return {
+            "last_request_latency_ms": self._last_latency_ms,
+            "average_latency_ms": round(avg_latency, 1),
+            "rate_limit_usage_pct": round(self._rate_limiter.stats.get("usage_pct", 0), 1),
+        }
+
     @property
     def is_authenticated(self) -> bool:
         """Check if client has valid session tokens."""
@@ -118,6 +146,36 @@ class AsyncIGClient:
         if self._client is not None and not self._client.is_closed:
             await self._client.aclose()
             self._client = None
+
+    def update_settings(self, settings: Settings) -> None:
+        """
+        Refresh runtime settings for an existing client instance.
+
+        This keeps singleton-based DI safe when tests or environment overrides
+        rebuild Settings without recreating the client object.
+        """
+        old_settings = self._settings
+        self._settings = settings
+        self._base_url = settings.ig_base_url
+        self._timeout = settings.ig_request_timeout
+        self._max_retries = settings.ig_max_retries
+        self._rate_limiter = RateLimiter(
+            requests_per_second=settings.ig_rate_limit_rps,
+            burst=settings.ig_rate_limit_burst,
+        )
+
+        # Only clear auth tokens if credentials actually changed.
+        creds_changed = (
+            _secret_value(settings.ig_api_key) != _secret_value(old_settings.ig_api_key)
+            or _secret_value(settings.ig_username) != _secret_value(old_settings.ig_username)
+            or _secret_value(settings.ig_password) != _secret_value(old_settings.ig_password)
+            or settings.ig_base_url != old_settings.ig_base_url
+        )
+        if creds_changed:
+            self._cst = None
+            self._security_token = None
+            self._session_created_at = None
+            self._login_response = None
 
     def _get_base_headers(self) -> dict[str, str]:
         """Get base headers for all requests."""
@@ -151,6 +209,7 @@ class AsyncIGClient:
         version: str | None = None,
         json_body: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
+        extra_headers: dict[str, str] | None = None,
         require_auth: bool = True,
         retry_on_401: bool = True,
     ) -> httpx.Response:
@@ -179,6 +238,8 @@ class AsyncIGClient:
 
         if version:
             headers["VERSION"] = version
+        if extra_headers:
+            headers.update(extra_headers)
 
         # Log request (redacted)
         self._logger.debug(
@@ -195,6 +256,7 @@ class AsyncIGClient:
                     self._logger.debug("Rate limiter waited %.2fs", wait_time)
 
                 client = await self._get_client()
+                start_time = time.perf_counter()
                 response = await client.request(
                     method,
                     url,
@@ -202,6 +264,11 @@ class AsyncIGClient:
                     json=json_body,
                     params=params,
                 )
+                latency_ms = int((time.perf_counter() - start_time) * 1000)
+                self._last_latency_ms = latency_ms
+                self._latency_history.append(latency_ms)
+                if len(self._latency_history) > self._max_history:
+                    self._latency_history.pop(0)
 
                 # Log response (redacted headers)
                 self._logger.debug(
@@ -220,6 +287,8 @@ class AsyncIGClient:
                         headers = self._get_auth_headers()
                         if version:
                             headers["VERSION"] = version
+                        if extra_headers:
+                            headers.update(extra_headers)
                         continue
                     raise IGAuthError("Authentication failed")
 
@@ -518,7 +587,7 @@ class AsyncIGClient:
             )
 
         data = response.json()
-        return data.get("positions", [])
+        return cast(list[dict[str, Any]], data.get("positions", []))
 
     async def place_market_order(
         self,
@@ -600,7 +669,7 @@ class AsyncIGClient:
             confirmation = await self._confirm_deal(deal_reference_resp)
             return confirmation
 
-        return data
+        return cast(dict[str, Any], data)
 
     async def close_position(
         self,
@@ -638,20 +707,12 @@ class AsyncIGClient:
             size,
         )
 
-        # IG uses DELETE with body via _method header
-        headers = self._get_auth_headers()
-        headers["VERSION"] = IG_VERSION_CLOSE
-        headers["_method"] = "DELETE"
-
-        client = await self._get_client()
-        url = f"{self._base_url}/positions/otc"
-
-        await self._rate_limiter.acquire()
-        response = await client.request(
-            "POST",  # Use POST with _method=DELETE header
-            url,
-            headers=headers,
-            json=body,
+        response = await self._request(
+            "POST",  # IG requires POST + _method=DELETE for close
+            "/positions/otc",
+            version=IG_VERSION_CLOSE,
+            json_body=body,
+            extra_headers={"_method": "DELETE"},
         )
 
         if response.status_code not in (200, 201):
@@ -671,7 +732,7 @@ class AsyncIGClient:
             confirmation = await self._confirm_deal(deal_reference)
             return confirmation
 
-        return data
+        return cast(dict[str, Any], data)
 
     async def _confirm_deal(
         self,
@@ -710,7 +771,7 @@ class AsyncIGClient:
                         status,
                         data.get("dealId"),
                     )
-                    return data
+                    return cast(dict[str, Any], data)
 
                 # Still pending
                 self._logger.debug(
@@ -758,7 +819,7 @@ class AsyncIGClient:
             )
 
         data = response.json()
-        return data.get("workingOrders", [])
+        return cast(list[dict[str, Any]], data.get("workingOrders", []))
 
     async def cancel_working_order(self, deal_id: str) -> dict[str, Any]:
         """
@@ -772,18 +833,11 @@ class AsyncIGClient:
         """
         await self.ensure_session()
 
-        headers = self._get_auth_headers()
-        headers["VERSION"] = IG_VERSION_WORKING_ORDERS
-        headers["_method"] = "DELETE"
-
-        client = await self._get_client()
-        url = f"{self._base_url}/workingorders/otc/{deal_id}"
-
-        await self._rate_limiter.acquire()
-        response = await client.request(
-            "POST",  # Use POST with _method=DELETE header
-            url,
-            headers=headers,
+        response = await self._request(
+            "POST",  # IG requires POST + _method=DELETE for cancel
+            f"/workingorders/otc/{deal_id}",
+            version=IG_VERSION_WORKING_ORDERS,
+            extra_headers={"_method": "DELETE"},
         )
 
         if response.status_code not in (200, 201):
@@ -795,7 +849,7 @@ class AsyncIGClient:
                 pass
             raise IGAPIError(error_msg, status_code=response.status_code)
 
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     # =========================================================================
     # Account Verification Methods (for LIVE trading gates)

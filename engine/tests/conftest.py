@@ -9,12 +9,13 @@ from pathlib import Path
 
 import pytest
 
-# Import shared fixtures from api_fixtures
+# Import shared fixtures
 from tests.api_fixtures import *  # noqa: F403
+from tests.fixtures.app_fixtures import *  # noqa: F403
 
-# Set test environment variables before importing app modules
-os.environ.setdefault("SOLAT_MODE", "DEMO")
-os.environ.setdefault("SOLAT_ENV", "development")
+# Force test environment variables before importing app modules
+os.environ["SOLAT_MODE"] = "DEMO"
+os.environ["SOLAT_ENV"] = "development"
 
 
 @pytest.fixture(scope="session")
@@ -59,8 +60,10 @@ def reset_singletons() -> Generator[None, None, None]:
         recommendation_routes,
     )
     from solat_engine.autopilot import service as autopilot_service_mod
+    from solat_engine.config import get_settings
     from solat_engine.market_data import publisher
 
+    get_settings.cache_clear()
     catalog_routes._catalogue_store = None
     ig_routes._ig_client = None
     data_routes._parquet_store = None

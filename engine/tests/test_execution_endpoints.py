@@ -8,8 +8,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from solat_engine.api.execution_routes import get_ig_client
-from solat_engine.config import get_settings_dep
 from solat_engine.execution.gates import GateMode, GateStatus
 
 # =============================================================================
@@ -20,9 +18,9 @@ from solat_engine.execution.gates import GateMode, GateStatus
 class TestStatusEndpoint:
     """Tests for GET /execution/status endpoint."""
 
-    def test_status_returns_initial_state(self, api_client: TestClient) -> None:
+    def test_status_returns_initial_state(self, app_client: TestClient) -> None:
         """Should return initial disconnected state."""
-        response = api_client.get("/execution/status")
+        response = app_client.get("/execution/status")
 
         assert response.status_code == 200
         data = response.json()
@@ -33,10 +31,10 @@ class TestStatusEndpoint:
         assert data["signals_enabled"] is True
         assert data["demo_arm_enabled"] is False
 
-    def test_state_alias_matches_status(self, api_client: TestClient) -> None:
+    def test_state_alias_matches_status(self, app_client: TestClient) -> None:
         """Legacy /execution/state alias should mirror /execution/status."""
-        status_response = api_client.get("/execution/status")
-        state_response = api_client.get("/execution/state")
+        status_response = app_client.get("/execution/status")
+        state_response = app_client.get("/execution/state")
 
         assert status_response.status_code == 200
         assert state_response.status_code == 200
@@ -52,27 +50,22 @@ class TestConnectEndpoint:
     """Tests for POST /execution/connect endpoint."""
 
     def test_connect_without_credentials(
-        self, api_client: TestClient, mock_settings: MagicMock
+        self, app_client: TestClient, mock_settings: MagicMock
     ) -> None:
         """Should fail when credentials not configured."""
         # Override settings to not have IG credentials
         mock_settings.has_ig_credentials = False
 
-        from solat_engine.api import execution_routes
-        execution_routes.reset_execution_state()
-
-        response = api_client.post("/execution/connect")
+        response = app_client.post("/execution/connect")
 
         assert response.status_code == 400
         assert "credentials" in response.json()["detail"].lower()
 
     def test_connect_with_mocked_broker(
-        self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
+        self, app_client: TestClient
     ) -> None:
         """Should connect when broker is mocked."""
-        overrider.override(get_ig_client, lambda: mock_ig_client)
-
-        response = api_client.post("/execution/connect")
+        response = app_client.post("/execution/connect")
 
         assert response.status_code == 200
         data = response.json()
@@ -80,19 +73,11 @@ class TestConnectEndpoint:
         assert data["mode"] == "DEMO"
 
     def test_live_connect_blocked_when_gates_fail(
-        self, mock_ig_client: AsyncMock, mock_settings, overrider
+        self, app_client: TestClient, mock_settings
     ) -> None:
         """LIVE mode connect should fail when trading gates are not satisfied."""
-        from solat_engine.api.execution_routes import (
-            reset_execution_state,
-        )
-
-        reset_execution_state()
-
         # Set execution mode to LIVE
         mock_settings.execution_mode = "LIVE"
-        overrider.override(get_settings_dep, lambda: mock_settings)
-        overrider.override(get_ig_client, lambda: mock_ig_client)
 
         # Mock gates to return blocked
         mock_gates = MagicMock()
@@ -106,27 +91,17 @@ class TestConnectEndpoint:
             "solat_engine.api.execution_routes.get_trading_gates",
             return_value=mock_gates,
         ):
-            from solat_engine.main import app
-            with TestClient(app) as client:
-                response = client.post("/execution/connect")
+            response = app_client.post("/execution/connect")
 
         assert response.status_code == 400
         assert "LIVE mode blocked" in response.json()["detail"]
 
     def test_live_connect_succeeds_when_gates_pass(
-        self, mock_ig_client: AsyncMock, mock_settings, overrider
+        self, app_client: TestClient, mock_settings
     ) -> None:
         """LIVE mode connect should succeed when all trading gates pass."""
-        from solat_engine.api.execution_routes import (
-            reset_execution_state,
-        )
-
-        reset_execution_state()
-
         # Set execution mode to LIVE
         mock_settings.execution_mode = "LIVE"
-        overrider.override(get_settings_dep, lambda: mock_settings)
-        overrider.override(get_ig_client, lambda: mock_ig_client)
 
         # Mock gates to return allowed
         mock_gates = MagicMock()
@@ -139,9 +114,7 @@ class TestConnectEndpoint:
             "solat_engine.api.execution_routes.get_trading_gates",
             return_value=mock_gates,
         ):
-            from solat_engine.main import app
-            with TestClient(app) as client:
-                response = client.post("/execution/connect")
+            response = app_client.post("/execution/connect")
 
         assert response.status_code == 200
         data = response.json()
@@ -158,15 +131,13 @@ class TestArmEndpoint:
     """Tests for POST /execution/arm endpoint."""
 
     def test_arm_requires_confirmation(
-        self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
+        self, app_client: TestClient
     ) -> None:
         """Should require confirmation to arm."""
-        overrider.override(get_ig_client, lambda: mock_ig_client)
-
-        api_client.post("/execution/connect")
+        app_client.post("/execution/connect")
 
         # Try to arm without confirmation
-        response = api_client.post("/execution/arm", json={"confirm": False})
+        response = app_client.post("/execution/arm", json={"confirm": False})
 
         assert response.status_code == 200
         data = response.json()
@@ -174,28 +145,24 @@ class TestArmEndpoint:
         assert "confirm" in data["error"].lower()
 
     def test_arm_with_confirmation(
-        self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
+        self, app_client: TestClient
     ) -> None:
         """Should arm when confirmation provided."""
-        overrider.override(get_ig_client, lambda: mock_ig_client)
+        app_client.post("/execution/connect")
 
-        api_client.post("/execution/connect")
-
-        response = api_client.post("/execution/arm", json={"confirm": True})
+        response = app_client.post("/execution/arm", json={"confirm": True})
 
         assert response.status_code == 200
         data = response.json()
         assert data["ok"] is True
         assert data["armed"] is True
 
-    def test_disarm(self, api_client: TestClient, mock_ig_client: AsyncMock, overrider) -> None:
+    def test_disarm(self, app_client: TestClient) -> None:
         """Should disarm execution."""
-        overrider.override(get_ig_client, lambda: mock_ig_client)
+        app_client.post("/execution/connect")
+        app_client.post("/execution/arm", json={"confirm": True})
 
-        api_client.post("/execution/connect")
-        api_client.post("/execution/arm", json={"confirm": True})
-
-        response = api_client.post("/execution/disarm")
+        response = app_client.post("/execution/disarm")
 
         assert response.status_code == 200
         data = response.json()
@@ -211,15 +178,13 @@ class TestKillSwitchEndpoint:
     """Tests for kill switch endpoints."""
 
     def test_activate_kill_switch(
-        self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
+        self, app_client: TestClient
     ) -> None:
         """Should activate kill switch."""
-        overrider.override(get_ig_client, lambda: mock_ig_client)
+        app_client.post("/execution/connect")
+        app_client.post("/execution/arm", json={"confirm": True})
 
-        api_client.post("/execution/connect")
-        api_client.post("/execution/arm", json={"confirm": True})
-
-        response = api_client.post(
+        response = app_client.post(
             "/execution/kill-switch/activate",
             json={"reason": "test"},
         )
@@ -229,44 +194,40 @@ class TestKillSwitchEndpoint:
         assert data["ok"] is True
 
         # Verify state
-        status = api_client.get("/execution/status").json()
+        status = app_client.get("/execution/status").json()
         assert status["kill_switch_active"] is True
         assert status["armed"] is False
 
     def test_reset_kill_switch(
-        self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
+        self, app_client: TestClient
     ) -> None:
         """Should reset kill switch."""
-        overrider.override(get_ig_client, lambda: mock_ig_client)
-
-        api_client.post("/execution/connect")
-        api_client.post(
+        app_client.post("/execution/connect")
+        app_client.post(
             "/execution/kill-switch/activate",
             json={"reason": "test"},
         )
 
-        response = api_client.post("/execution/kill-switch/reset")
+        response = app_client.post("/execution/kill-switch/reset")
 
         assert response.status_code == 200
         data = response.json()
         assert data["ok"] is True
 
-        status = api_client.get("/execution/status").json()
+        status = app_client.get("/execution/status").json()
         assert status["kill_switch_active"] is False
 
     def test_arm_blocked_by_kill_switch(
-        self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
+        self, app_client: TestClient
     ) -> None:
         """Should not arm when kill switch is active."""
-        overrider.override(get_ig_client, lambda: mock_ig_client)
-
-        api_client.post("/execution/connect")
-        api_client.post(
+        app_client.post("/execution/connect")
+        app_client.post(
             "/execution/kill-switch/activate",
             json={"reason": "test"},
         )
 
-        response = api_client.post("/execution/arm", json={"confirm": True})
+        response = app_client.post("/execution/arm", json={"confirm": True})
 
         assert response.status_code == 200
         data = response.json()
@@ -282,22 +243,20 @@ class TestKillSwitchEndpoint:
 class TestPositionsEndpoint:
     """Tests for GET /execution/positions endpoint."""
 
-    def test_positions_requires_connection(self, api_client: TestClient) -> None:
+    def test_positions_requires_connection(self, app_client: TestClient) -> None:
         """Should fail when not connected."""
-        response = api_client.get("/execution/positions")
+        response = app_client.get("/execution/positions")
 
         assert response.status_code == 400
         assert "connected" in response.json()["detail"].lower()
 
     def test_positions_returns_empty_list(
-        self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
+        self, app_client: TestClient
     ) -> None:
         """Should return empty positions list when connected."""
-        overrider.override(get_ig_client, lambda: mock_ig_client)
+        app_client.post("/execution/connect")
 
-        api_client.post("/execution/connect")
-
-        response = api_client.get("/execution/positions")
+        response = app_client.get("/execution/positions")
 
         assert response.status_code == 200
         data = response.json()
@@ -313,9 +272,9 @@ class TestPositionsEndpoint:
 class TestRunOnceEndpoint:
     """Tests for POST /execution/run-once endpoint."""
 
-    def test_run_once_requires_connection(self, api_client: TestClient) -> None:
+    def test_run_once_requires_connection(self, app_client: TestClient) -> None:
         """Should fail when not connected."""
-        response = api_client.post(
+        response = app_client.post(
             "/execution/run-once",
             json={
                 "symbol": "EURUSD",
@@ -328,14 +287,12 @@ class TestRunOnceEndpoint:
         assert response.status_code == 400
 
     def test_run_once_requires_demo_arm(
-        self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
+        self, app_client: TestClient
     ) -> None:
         """Should require demo_arm_enabled for run-once."""
-        overrider.override(get_ig_client, lambda: mock_ig_client)
+        app_client.post("/execution/connect")
 
-        api_client.post("/execution/connect")
-
-        response = api_client.post(
+        response = app_client.post(
             "/execution/run-once",
             json={
                 "symbol": "EURUSD",
@@ -349,16 +306,14 @@ class TestRunOnceEndpoint:
         assert "DEMO arm" in response.json()["detail"]
 
     def test_run_once_when_not_armed(
-        self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
+        self, app_client: TestClient
     ) -> None:
         """Should record intent but not submit when not armed."""
-        overrider.override(get_ig_client, lambda: mock_ig_client)
-
-        api_client.post("/execution/connect")
+        app_client.post("/execution/connect")
         # Enable DEMO arm but do NOT arm
-        api_client.post("/execution/mode", json={"demo_arm_enabled": True})
+        app_client.post("/execution/mode", json={"demo_arm_enabled": True})
 
-        response = api_client.post(
+        response = app_client.post(
             "/execution/run-once",
             json={
                 "symbol": "EURUSD",
@@ -382,9 +337,9 @@ class TestRunOnceEndpoint:
 class TestModeEndpoint:
     """Tests for GET/POST /execution/mode endpoints."""
 
-    def test_get_mode_defaults(self, api_client: TestClient) -> None:
+    def test_get_mode_defaults(self, app_client: TestClient) -> None:
         """Should return default mode flags."""
-        response = api_client.get("/execution/mode")
+        response = app_client.get("/execution/mode")
 
         assert response.status_code == 200
         data = response.json()
@@ -392,9 +347,9 @@ class TestModeEndpoint:
         assert data["demo_arm_enabled"] is False
         assert data["mode"] == "DEMO"
 
-    def test_set_signals_enabled(self, api_client: TestClient) -> None:
+    def test_set_signals_enabled(self, app_client: TestClient) -> None:
         """Should toggle signals_enabled."""
-        response = api_client.post("/execution/mode", json={"signals_enabled": False})
+        response = app_client.post("/execution/mode", json={"signals_enabled": False})
 
         assert response.status_code == 200
         data = response.json()
@@ -403,21 +358,21 @@ class TestModeEndpoint:
         assert data["demo_arm_enabled"] is False
 
         # Verify via GET
-        get_resp = api_client.get("/execution/mode")
+        get_resp = app_client.get("/execution/mode")
         assert get_resp.json()["signals_enabled"] is False
 
-    def test_set_demo_arm_enabled(self, api_client: TestClient) -> None:
+    def test_set_demo_arm_enabled(self, app_client: TestClient) -> None:
         """Should toggle demo_arm_enabled."""
-        response = api_client.post("/execution/mode", json={"demo_arm_enabled": True})
+        response = app_client.post("/execution/mode", json={"demo_arm_enabled": True})
 
         assert response.status_code == 200
         data = response.json()
         assert data["ok"] is True
         assert data["demo_arm_enabled"] is True
 
-    def test_set_both_flags(self, api_client: TestClient) -> None:
+    def test_set_both_flags(self, app_client: TestClient) -> None:
         """Should set both flags in one request."""
-        response = api_client.post(
+        response = app_client.post(
             "/execution/mode",
             json={"signals_enabled": False, "demo_arm_enabled": True},
         )
@@ -427,13 +382,13 @@ class TestModeEndpoint:
         assert data["signals_enabled"] is False
         assert data["demo_arm_enabled"] is True
 
-    def test_partial_update_preserves_other(self, api_client: TestClient) -> None:
+    def test_partial_update_preserves_other(self, app_client: TestClient) -> None:
         """Setting one flag should not affect the other."""
         # Enable demo arm
-        api_client.post("/execution/mode", json={"demo_arm_enabled": True})
+        app_client.post("/execution/mode", json={"demo_arm_enabled": True})
 
         # Disable signals — demo_arm should remain True
-        response = api_client.post("/execution/mode", json={"signals_enabled": False})
+        response = app_client.post("/execution/mode", json={"signals_enabled": False})
 
         data = response.json()
         assert data["signals_enabled"] is False
@@ -448,23 +403,21 @@ class TestModeEndpoint:
 class TestSignalsEndpoint:
     """Tests for GET /execution/signals endpoint."""
 
-    def test_signals_empty(self, api_client: TestClient) -> None:
+    def test_signals_empty(self, app_client: TestClient) -> None:
         """Should return empty signals when no intents recorded."""
-        response = api_client.get("/execution/signals")
+        response = app_client.get("/execution/signals")
         assert response.status_code == 200
         data = response.json()
         assert data["signals"] == []
         assert data["total"] == 0
 
     def test_signals_after_run_once(
-        self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
+        self, app_client: TestClient
     ) -> None:
         """Should return signal after a run-once creates an intent."""
-        overrider.override(get_ig_client, lambda: mock_ig_client)
-
-        api_client.post("/execution/connect")
-        api_client.post("/execution/mode", json={"demo_arm_enabled": True})
-        api_client.post(
+        app_client.post("/execution/connect")
+        app_client.post("/execution/mode", json={"demo_arm_enabled": True})
+        app_client.post(
             "/execution/run-once",
             json={
                 "symbol": "EURUSD",
@@ -474,7 +427,7 @@ class TestSignalsEndpoint:
             },
         )
 
-        response = api_client.get("/execution/signals")
+        response = app_client.get("/execution/signals")
         assert response.status_code == 200
         data = response.json()
         assert data["total"] >= 1
@@ -482,24 +435,22 @@ class TestSignalsEndpoint:
         assert data["signals"][0]["side"] == "BUY"
 
     def test_signals_filter_by_symbol(
-        self, api_client: TestClient, mock_ig_client: AsyncMock, overrider
+        self, app_client: TestClient
     ) -> None:
         """Should filter signals by symbol."""
-        overrider.override(get_ig_client, lambda: mock_ig_client)
-
-        api_client.post("/execution/connect")
-        api_client.post("/execution/mode", json={"demo_arm_enabled": True})
-        api_client.post(
+        app_client.post("/execution/connect")
+        app_client.post("/execution/mode", json={"demo_arm_enabled": True})
+        app_client.post(
             "/execution/run-once",
             json={"symbol": "EURUSD", "bot": "TestBot", "side": "BUY", "size": 0.1},
         )
 
         # Filter for non-matching symbol
-        response = api_client.get("/execution/signals?symbol=GBPUSD")
+        response = app_client.get("/execution/signals?symbol=GBPUSD")
         assert response.status_code == 200
         assert response.json()["total"] == 0
 
         # Filter for matching symbol
-        response = api_client.get("/execution/signals?symbol=EURUSD")
+        response = app_client.get("/execution/signals?symbol=EURUSD")
         assert response.status_code == 200
         assert response.json()["total"] >= 1

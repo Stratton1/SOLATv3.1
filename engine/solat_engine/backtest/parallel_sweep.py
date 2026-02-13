@@ -50,9 +50,9 @@ class SweepManifest:
     failed_combos: int = 0
     status: str = "running"  # running, completed, failed
     last_updated: str = ""
-    config: dict = field(default_factory=dict)
+    config: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "sweep_id": self.sweep_id,
             "request_hash": self.request_hash,
@@ -67,7 +67,7 @@ class SweepManifest:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "SweepManifest":
+    def from_dict(cls, d: dict[str, Any]) -> "SweepManifest":
         return cls(
             sweep_id=d["sweep_id"],
             request_hash=d["request_hash"],
@@ -104,7 +104,7 @@ class ComboResult:
     skipped: bool = False
     skip_reason: str | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "combo_id": self.combo_id,
             "bot": self.bot,
@@ -126,7 +126,7 @@ class ComboResult:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "ComboResult":
+    def from_dict(cls, d: dict[str, Any]) -> "ComboResult":
         return cls(
             combo_id=d["combo_id"],
             bot=d["bot"],
@@ -181,7 +181,7 @@ def compute_request_hash(
     return hashlib.sha256(data.encode()).hexdigest()[:16]
 
 
-def _run_single_combo(args: tuple) -> ComboResult:
+def _run_single_combo(args: tuple[Any, ...]) -> ComboResult:
     """
     Run a single backtest combo in a worker process.
 
@@ -291,7 +291,7 @@ def _run_single_combo(args: tuple) -> ComboResult:
         )
 
 
-def atomic_write_json(path: Path, data: dict) -> None:
+def atomic_write_json(path: Path, data: dict[str, Any]) -> None:
     """Write JSON atomically using temp file + rename."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(
@@ -330,7 +330,7 @@ class ParallelSweepRunner:
         data_dir: Path,
         max_workers: int | None = None,
         combo_timeout: float = 300.0,
-        progress_callback: Callable[[dict], None] | None = None,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
     ):
         """
         Initialize parallel sweep runner.
@@ -403,9 +403,10 @@ class ParallelSweepRunner:
             sweep_dir = self.sweeps_dir / sweep_id
         elif resume and not force:
             # Look for existing sweep with matching hash
-            sweep_dir = self._find_resumable_sweep(request_hash)
-            if sweep_dir:
-                sweep_id = sweep_dir.name
+            resumable_dir = self._find_resumable_sweep(request_hash)
+            if resumable_dir is not None:
+                sweep_dir = resumable_dir
+                sweep_id = resumable_dir.name
                 logger.info("Resuming sweep %s", sweep_id)
             else:
                 sweep_id = str(uuid4())[:8]
@@ -553,8 +554,8 @@ class ParallelSweepRunner:
                             "Fail-fast triggered by %s/%s/%s: %s",
                             result.bot, result.symbol, result.timeframe, result.error,
                         )
-                        for f in future_to_combo:
-                            f.cancel()
+                        for future_item in future_to_combo:
+                            future_item.cancel()
                         self._emit_progress({
                             "type": "sweep_failed",
                             "sweep_id": sweep_id,
@@ -743,7 +744,7 @@ class ParallelSweepRunner:
             }
             atomic_write_json(sweep_dir / "summary.json", summary)
 
-    def _emit_progress(self, data: dict) -> None:
+    def _emit_progress(self, data: dict[str, Any]) -> None:
         """Emit progress event."""
         if self.progress_callback:
             self.progress_callback({
@@ -752,7 +753,7 @@ class ParallelSweepRunner:
             })
 
 
-def run_parallel_sweep_cli():
+def run_parallel_sweep_cli() -> dict[str, Any]:
     """CLI entrypoint for parallel sweep."""
     import argparse
 
@@ -903,7 +904,7 @@ Examples:
     # Progress callback
     last_print_time = [0.0]
 
-    def print_progress(event: dict) -> None:
+    def print_progress(event: dict[str, Any]) -> None:
         event_type = event.get("type")
         if event_type == "sweep_started":
             print(f"Started sweep {event['sweep_id']}: {event['total_combos']} combos ({event['pending']} pending, {event['skipped']} skipped)")

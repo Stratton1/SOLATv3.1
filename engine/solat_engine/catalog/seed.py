@@ -126,6 +126,8 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
         search_hint="US 500",
         currency="USD",
         pip_size=Decimal("0.1"),
+        demo_epic="IX.D.SPTRD.IFD.IP",
+        live_epic="IX.D.SPTRD.IFD.IP",
     ),
     CatalogueSeedItem(
         symbol="NAS100",
@@ -134,6 +136,8 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
         search_hint="US Tech 100",
         currency="USD",
         pip_size=Decimal("0.1"),
+        demo_epic="IX.D.NASDAQ.IFD.IP",
+        live_epic="IX.D.NASDAQ.IFD.IP",
     ),
     CatalogueSeedItem(
         symbol="US30",
@@ -142,6 +146,8 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
         search_hint="Wall Street",
         currency="USD",
         pip_size=Decimal("1"),
+        demo_epic="IX.D.DOW.IFD.IP",
+        live_epic="IX.D.DOW.IFD.IP",
     ),
     CatalogueSeedItem(
         symbol="GER40",
@@ -150,6 +156,8 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
         search_hint="Germany 40",
         currency="EUR",
         pip_size=Decimal("0.1"),
+        demo_epic="IX.D.DAX.IFD.IP",
+        live_epic="IX.D.DAX.IFD.IP",
     ),
     CatalogueSeedItem(
         symbol="UK100",
@@ -158,6 +166,8 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
         search_hint="UK 100",
         currency="GBP",
         pip_size=Decimal("0.1"),
+        demo_epic="IX.D.FTSE.CFD.IP",
+        live_epic="IX.D.FTSE.CFD.IP",
     ),
     CatalogueSeedItem(
         symbol="FRA40",
@@ -166,6 +176,8 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
         search_hint="France 40",
         currency="EUR",
         pip_size=Decimal("0.1"),
+        demo_epic="IX.D.CAC.IFD.IP",
+        live_epic="IX.D.CAC.IFD.IP",
     ),
     CatalogueSeedItem(
         symbol="JP225",
@@ -174,6 +186,8 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
         search_hint="Japan 225",
         currency="JPY",
         pip_size=Decimal("1"),
+        demo_epic="IX.D.NIKKEI.IFD.IP",
+        live_epic="IX.D.NIKKEI.IFD.IP",
     ),
     CatalogueSeedItem(
         symbol="AUS200",
@@ -182,6 +196,8 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
         search_hint="Australia 200",
         currency="AUD",
         pip_size=Decimal("0.1"),
+        demo_epic="IX.D.ASX.IFD.IP",
+        live_epic="IX.D.ASX.IFD.IP",
     ),
     # =========================================================================
     # COMMODITIES (6)
@@ -193,6 +209,8 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
         search_hint="Gold",
         currency="USD",
         pip_size=Decimal("0.01"),
+        demo_epic="CC.D.GOLD.USS.IP",
+        live_epic="CC.D.GOLD.USS.IP",
     ),
     CatalogueSeedItem(
         symbol="XAGUSD",
@@ -201,6 +219,8 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
         search_hint="Silver",
         currency="USD",
         pip_size=Decimal("0.001"),
+        demo_epic="CC.D.SILVER.USS.IP",
+        live_epic="CC.D.SILVER.USS.IP",
     ),
     CatalogueSeedItem(
         symbol="USOIL",
@@ -209,6 +229,8 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
         search_hint="Oil - US Crude",
         currency="USD",
         pip_size=Decimal("0.01"),
+        demo_epic="CC.D.WTI.USS.IP",
+        live_epic="CC.D.WTI.USS.IP",
     ),
     CatalogueSeedItem(
         symbol="UKOIL",
@@ -217,6 +239,8 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
         search_hint="Oil - Brent Crude",
         currency="USD",
         pip_size=Decimal("0.01"),
+        demo_epic="CC.D.BRENT.USS.IP",
+        live_epic="CC.D.BRENT.USS.IP",
     ),
     CatalogueSeedItem(
         symbol="NATGAS",

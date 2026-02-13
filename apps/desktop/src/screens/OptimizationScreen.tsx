@@ -396,7 +396,7 @@ export function OptimizationScreen() {
 
   return (
     <div className="opt-screen">
-      <h2 className="opt-title">Optimisation</h2>
+      <div className="page-grid-2col" style={{ padding: 0, gap: 8 }}>
 
       {/* Scheduler Status Card */}
       <div className="opt-card">
@@ -549,6 +549,7 @@ export function OptimizationScreen() {
             ))}
           </div>
         )}
+      </div>
       </div>
 
       {/* WFO Trigger Modal */}

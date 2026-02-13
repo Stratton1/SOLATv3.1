@@ -18,6 +18,7 @@ import {
 } from "../lib/engineClient";
 import { InfoTip } from "../components/InfoTip";
 import { useToast } from "../context/ToastContext";
+import { formatPnl } from "../lib/format";
 
 // =============================================================================
 // Types
@@ -416,7 +417,7 @@ function FillsTable({ fills, onViewChart }: { fills: ExecutionFill[]; onViewChar
               <td className="mono num">{fill.size}</td>
               <td>{fill.bot ?? "\u2014"}</td>
               <td className={`mono num ${(fill.pnl ?? 0) >= 0 ? "positive" : "negative"}`}>
-                {fill.pnl !== undefined ? fill.pnl.toFixed(2) : "\u2014"}
+                {fill.pnl !== undefined ? formatPnl(fill.pnl) : "\u2014"}
               </td>
               <td>{fill.is_close ? "Yes" : "No"}</td>
               <td>

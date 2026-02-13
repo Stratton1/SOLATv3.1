@@ -221,7 +221,9 @@ class KillSwitch:
 
                 activated_at_str = state.get("activated_at")
                 if activated_at_str:
-                    self._activated_at = datetime.fromisoformat(activated_at_str)
+                    normalized = activated_at_str.replace("Z", "+00:00")
+                    parsed = datetime.fromisoformat(normalized)
+                    self._activated_at = parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
                 logger.warning(
                     "Restored active kill switch from %s: %s (activated at %s)",

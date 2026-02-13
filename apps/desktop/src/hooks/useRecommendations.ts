@@ -31,20 +31,14 @@ export function useRecommendations(): UseRecommendationsResult {
       setIsLoading(true);
       setError(null);
 
-      const [latestRes, allRes] = await Promise.allSettled([
-        engineClient.getLatestRecommendation(),
-        engineClient.listRecommendations(),
-      ]);
+      const allRes = await engineClient.listRecommendations();
+      setAll(allRes);
 
-      if (latestRes.status === "fulfilled") {
-        setLatest(latestRes.value);
-      } else {
-        // 404 is expected when no recommendations exist
+      // Avoid /latest 404 noise when no recommendation sets exist.
+      if (allRes.length === 0) {
         setLatest(null);
-      }
-
-      if (allRes.status === "fulfilled") {
-        setAll(allRes.value);
+      } else {
+        setLatest(await engineClient.getRecommendation(allRes[0].id));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch recommendations");

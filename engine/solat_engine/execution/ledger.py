@@ -293,6 +293,14 @@ class ExecutionLedger:
 
         if records:
             df = pd.DataFrame(records)
+            if self._snapshots_path.exists():
+                try:
+                    existing = pd.read_parquet(self._snapshots_path)
+                    df = pd.concat([existing, df], ignore_index=True)
+                except Exception:
+                    # If existing snapshot file is unreadable/corrupt, prefer current
+                    # in-memory batch over failing the execution path.
+                    pass
             df.to_parquet(self._snapshots_path, index=False)
             # Clear snapshots after successful flush to prevent memory leak
             self._snapshots.clear()

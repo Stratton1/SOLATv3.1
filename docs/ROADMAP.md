@@ -1,459 +1,226 @@
-# SOLAT v3.1 Development Roadmap
+# SOLAT Project Roadmap
 
-## Phase Overview
+**Version:** 3.1.0
+**Status:** Finalizing for LIVE trading.
 
-| Phase | Focus | Status |
-|-------|-------|--------|
-| 001-009 | Foundations | ✅ Complete |
-| 010-019 | IG Connectivity | ✅ Complete |
-| 020-029 | Data Layer | ✅ Complete |
-| 030-039 | Backtest Engine | ✅ Complete |
-| 040-049 | Elite 8 Strategies | ✅ Complete |
-| 050-059 | Live Execution | ✅ Complete |
-| 060-069 | Terminal UI | 🚧 In progress |
-| 070-079 | Hardening | 🔲 Pending |
-| 080+ | Live Trading | 🔲 Pending |
+This document outlines the development roadmap for SOLAT, from the immediate tasks required to go live with v3.1 to future feature enhancements and architectural goals.
 
 ---
 
-## Phase 001-009: Foundations ✅
+## 🎯 Current Milestone: v3.1 Go-Live
 
-**Objective**: Create monorepo structure with working Tauri + Python sidecar
+**Objective:** To safely and successfully deploy the SOLAT v3.1 trading engine to a live environment with the IG broker. This milestone is focused on testing, validation, and risk management.
 
-### Deliverables
-- [x] Repository structure (apps/desktop, engine/)
-- [x] Python package with FastAPI
-- [x] Domain models (Bar, Instrument, Signal, Order, Fill, Position)
-- [x] Interfaces (BrokerAdapter, DataProvider, Strategy, BacktestEngine)
-- [x] Event bus and runtime utilities
-- [x] Configuration and logging system
-- [x] Tauri v2 desktop shell
-- [x] React UI with health display
-- [x] WebSocket heartbeat connection
-- [x] CI pipeline (tests + build)
-- [x] Documentation (Architecture, Conventions, Security)
+### Suggested Timeline
 
----
+| Day | Phase | Focus |
+|-----|-------|-------|
+| 1 | 1, 2 | Fix tests, Complete IG epics |
+| 2 | 3, 4 | Data quality, Run backtests |
+| 3 | 5 | Walk-forward optimization |
+| 4-5 | 6 | Paper trading (48h) |
+| 6 | 7, 8 | Risk controls, Final checklist |
+| 7 | GO LIVE | Start with minimum sizes |
 
-## Phase 010-019: IG Connectivity ✅
+### PHASE 1: FIX TEST SUITE 🔧
+**Priority:** CRITICAL | **Status:** In Progress
 
-**Objective**: Implement IG broker adapter (demo mode)
+*Tasks:*
+- [ ] 1.1 Create test fixture helper module with `app.dependency_overrides` pattern.
+- [ ] 1.2 Migrate `test_ig_endpoints.py` to new DI pattern.
+- [ ] 1.3 Migrate `test_execution_*.py` to new DI pattern.
+- [ ] 1.4 Migrate `test_market_data_*.py` to new DI pattern.
+- [ ] 1.5 Migrate `test_catalog.py` to new DI pattern.
+- [ ] 1.6 Run full test suite: `pytest --tb=short`.
+- [ ] 1.7 Verify all 57 tests pass.
 
-### Deliverables
-- [x] IG REST client (authentication, session management)
-- [x] Account selection (demo/live)
-- [x] Instrument search and catalogue
-- [x] Price history fetching
-- [x] Rate limiter with IG-specific error handling
-- [ ] Streaming client (Lightstreamer) — placeholder/simulation only; production integration deferred
-- [x] Real-time price subscriptions
-- [ ] Account update subscriptions
-- [x] Connection health monitoring
+### PHASE 2: COMPLETE IG LIVE EPIC MAPPING 🗺️
+**Priority:** HIGH | **Status:** Not Started
 
-### Key Files
-```
-engine/solat_engine/broker/ig/
-├── __init__.py
-├── client.py          # REST client (session + retries + redaction)
-├── rate_limit.py      # Rate limiting
-├── redaction.py       # Secret redaction utilities
-└── types.py           # IG-specific response models
+*Tasks:*
+- [ ] 2.1 Document all LIVE vs DEMO epic differences.
+- [ ] 2.2 Add remaining `live_epic` values to `seed.py` (currently only 3 pairs done).
+- [ ] 2.3 Update catalog bootstrap to use `live_epic` when `IG_ACC_TYPE=LIVE`.
+- [ ] 2.4 Test catalog bootstrap with LIVE account.
+- [ ] 2.5 Verify all 10 forex pairs have correct LIVE epics.
 
-engine/solat_engine/market_data/
-├── models.py          # Quote/BarUpdate/Status models
-├── polling.py         # REST polling fallback
-└── streaming.py       # Lightstreamer client (placeholder/sim)
-```
+### PHASE 3: VALIDATE HISTORICAL DATA QUALITY 📈
+**Priority:** MEDIUM | **Status:** Not Started
 
----
+*Tasks:*
+- [ ] 3.1 Run data quality checker: `python scripts/check_data_quality.py --timeframe 1h`.
+- [ ] 3.2 Review any OHLC validation errors.
+- [ ] 3.3 Check for excessive gaps in major pairs.
+- [ ] 3.4 Verify date ranges are consistent (2020-2025).
+- [ ] 3.5 Spot-check 3 random instruments manually.
 
-## Phase 020-029: Data Layer ✅
+### PHASE 4: RUN FULL BACKTEST SUITE 🧪
+**Priority:** HIGH | **Status:** Not Started
 
-**Objective**: Build market data storage and retrieval
+*Tasks:*
+- [ ] 4.1 Start engine: `pnpm dev:engine`.
+- [ ] 4.2 Run single bot backtest on EURUSD (sanity check).
+- [ ] 4.3 Run all 8 Elite bots on EURUSD 1h (2023-2024).
+- [ ] 4.4 Run Grand Sweep: All bots × Top 5 pairs × 1h timeframe.
+- [ ] 4.5 Review top performers (Sharpe > 1.5, Win Rate > 50%).
+- [ ] 4.6 Identify best 2-3 bot/symbol combinations for LIVE.
 
-### Deliverables
-- [x] Canonical instrument catalogue (28 assets)
-- [x] Symbol ↔ Epic mapping
-- [x] Parquet storage for OHLCV data
-- [x] DuckDB query layer
-- [x] Timeframe aggregation (1m → 5m/15m/1h/4h)
-- [x] Data validation (missing bars, duplicates)
-- [x] Historical data backfill from IG
-- [x] Data integrity checks
-
-### Key Files
-```
-engine/solat_engine/catalog/
-├── models.py          # Instrument catalogue item model
-├── seed.py            # 28-asset seed list
-└── store.py           # JSON-backed store
-
-engine/solat_engine/data/
-├── ig_history.py      # Historical fetcher (chunked)
-├── parquet_store.py   # Parquet store (upsert/dedupe)
-├── aggregate.py       # Timeframe aggregation
-└── quality.py         # Data quality checks
-```
-
----
-
-## Phase 030-039: Backtest Engine v1 ✅
-
-**Objective**: Deterministic backtesting with realistic fills
-
-### Deliverables
-- [x] Event-driven backtest loop
-- [x] Bar feed iterator (no lookahead)
-- [x] Broker simulator
-- [x] Fill model (spread + slippage)
-- [x] Order types (market, attached SL/TP)
-- [ ] Limit/stop order simulation (deferred)
-- [x] Position tracking
-- [x] Equity curve calculation
-- [x] Performance metrics (Sharpe, Sortino, drawdown)
-- [x] Trade blotter export
-- [x] Artefact generation (JSON + Parquet)
-
-### Key Files
-```
-engine/solat_engine/backtest/
-├── engine.py          # Deterministic backtest engine
-├── broker_sim.py      # Broker simulator (fills)
-├── portfolio.py       # Positions + PnL
-├── sizing.py          # Sizing + risk caps
-├── metrics.py         # Performance metrics
-└── sweep.py           # Batch sweep runner
-```
-
----
-
-## Phase 040-049: Elite 8 Strategy Pack ✅
-
-**Objective**: Implement the 8 core trading strategies
-
-### Deliverables
-- [x] Shared indicator library (EMA, SMA, RSI, MACD, ATR, Bollinger, Stochastic, Ichimoku)
-- [x] Elite 8 bots implemented (selectable by name)
-- [x] Deterministic, no-lookahead signal generation
-- [x] Unit tests (golden fixtures where applicable)
-- [x] Reason codes for signal explanation
-
-### Key Files
-```
-engine/solat_engine/strategies/
-├── __init__.py
-├── elite8.py          # Elite 8 implementations
-└── indicators.py      # Shared indicators
-```
-
----
-
-## Phase 050-059: Live Execution v1 ✅
-
-**Objective**: Execute trades on IG demo account
-
-### Deliverables
-- [x] Execution router (signal → intent → order)
-- [x] Risk engine
-  - [x] Exposure caps
-  - [x] Max loss per day
-  - [x] Max trades per hour
-  - [x] Kill switch
-- [x] Order lifecycle management
-- [x] Position reconciliation (broker = truth)
-- [x] Trade logging and audit
-- [x] Error handling and recovery
-
-### Key Files
-```
-engine/solat_engine/execution/
-├── models.py          # Execution models + state
-├── router.py          # Signal → intent → order
-├── risk_engine.py     # Risk management + gates
-├── reconciliation.py  # Broker truth sync
-├── kill_switch.py     # Emergency stop
-└── ledger.py          # Append-only audit log
-```
-
----
-
-## Phase 060-069: Terminal UI 🚧
-
-**Objective**: Build full trading terminal interface
-
-### Deliverables
-- [x] Charting component (OHLC candlestick via lightweight-charts)
-- [x] Indicator overlays (EMA, VWAP, Ichimoku, etc.)
-- [x] Signal markers on chart
-- [x] Entry/exit markers (execution markers with legend)
-- [x] SL/TP visualization (dashed price lines with labels)
-- [x] Bot control panels (StrategyDrawer with per-panel config)
-- [x] Enable/disable per bot (toggle + params + apply-to-all)
-- [x] Timeframe selection
-- [x] Asset allowlist (catalogue search, preset groups, engine-synced)
-- [x] Backtest runner UI (BacktestsScreen with run/sweep)
-- [x] Results comparison (multi-select, metrics table, per-bot breakdown)
-- [x] Trade blotter (events/fills/orders tabs, filters, CSV export)
-- [x] Settings panel (SettingsScreen with diagnostics export, data sync, risk display)
-- [x] Error boundary (RouteErrorBoundary wrapping all routes)
-- [x] Navigation (React Router: Status, Terminal, Backtests, Blotter, Settings)
-- [x] Connection status + offline banner
-- [x] Light theme design system (tokens, CSS variables, white cards)
-
-### Key Files
-```
-engine/solat_engine/api/
-├── chart_routes.py          # Overlays + signals endpoints
-└── market_data_routes.py    # Market subscribe/status endpoints
-
-apps/desktop/src/
-├── components/
-│   ├── CandleChart.tsx      # Chart with markers, SL/TP, legend
-│   ├── ExecutionPanel.tsx
-│   ├── ErrorBoundary.tsx    # RouteErrorBoundary + copy error details
-│   ├── GoLiveModal.tsx
-│   ├── LiveBanner.tsx
-│   ├── OfflineBanner.tsx
-│   ├── backtest/
-│   │   ├── BacktestRunViewer.tsx
-│   │   └── BacktestComparison.tsx  # Multi-run comparison
-│   ├── strategy/
-│   │   └── StrategyDrawer.tsx      # Bots, presets, allowlist, risk
-│   └── workspace/
-│       ├── WorkspaceShell.tsx
-│       └── ChartPanel.tsx          # Execution + SL/TP toggles
-├── hooks/
-│   ├── useExecutionStatus.ts
-│   ├── useExecutionEvents.ts   # Fills + SL/TP levels for chart
-│   ├── usePositions.ts         # Open positions
-│   ├── useAllowlist.ts         # Engine-synced allowlist
-│   ├── useLiveGates.ts
-│   ├── useCatalogue.ts
-│   ├── useMarketSubscription.ts
-│   ├── useBars.ts
-│   ├── useOverlays.ts
-│   └── useSignals.ts
-├── screens/
-│   ├── TerminalScreen.tsx
-│   ├── BacktestsScreen.tsx     # Multi-select comparison
-│   ├── BlotterScreen.tsx       # Trade blotter (NEW)
-│   └── SettingsScreen.tsx
-├── theme/
-│   └── tokens.ts               # Design system tokens
-└── lib/
-    ├── engineClient.ts         # Typed API client (extended)
-    └── workspace.ts            # Panel model with showSlTp/showExecutions
-```
-
----
-
-### PROMPT 020: Close the Loop ✅
-
-End-to-end pipeline: WFO → recommended set → allowlist → autopilot execution.
-
-- [x] **RecommendedSet model + manager**
-  - [x] Generate from WFO results via ComboSelector
-  - [x] Persist JSON in `data/optimization/recommendations/`
-  - [x] Apply to allowlist (DEMO only, fail-closed on LIVE)
-  - [x] Status lifecycle: pending → applied / superseded
-  - [x] Markdown summary generation
-
-- [x] **Recommendation API routes**
-  - [x] `POST /optimization/recommendations/generate`
-  - [x] `GET /optimization/recommendations/latest`
-  - [x] `GET /optimization/recommendations/{id}`
-  - [x] `GET /optimization/recommendations`
-  - [x] `POST /optimization/recommendations/{id}/apply-demo`
-
-- [x] **Autopilot service (event-driven)**
-  - [x] Subscribes to `BAR_RECEIVED` events
-  - [x] Matches bars to allowlist entries
-  - [x] Runs Elite 8 strategies per-combo
-  - [x] Routes OrderIntents through ExecutionRouter
-  - [x] Rate limiting + per-combo cooldown
-  - [x] Bounded bar buffers (deques)
-  - [x] DEMO-only, fail-closed on LIVE
-
-- [x] **Autopilot API routes**
-  - [x] `GET /autopilot/status`
-  - [x] `POST /autopilot/enable`
-  - [x] `POST /autopilot/disable`
-  - [x] `GET /autopilot/combos`
-
-- [x] **UI updates**
-  - [x] Recommendations card in Optimisation screen
-  - [x] Grouped combo list by symbol
-  - [x] Autopilot card on Status screen
-  - [x] Flash-on-change animation for numeric values
-  - [x] Enhanced empty states (Blotter, Backtests)
-
-- [x] **Event bus extensions**
-  - [x] `RECOMMENDATION_GENERATED`, `RECOMMENDATION_APPLIED`
-  - [x] `AUTOPILOT_ENABLED`, `AUTOPILOT_DISABLED`, `AUTOPILOT_SIGNAL`
-
-### Key Files
-```
-engine/solat_engine/optimization/
-└── recommended_set.py    # RecommendedSet model + manager
-
-engine/solat_engine/autopilot/
-├── __init__.py
-└── service.py            # AutopilotService (event-driven)
-
-engine/solat_engine/api/
-├── recommendation_routes.py  # Recommendation endpoints
-└── autopilot_routes.py       # Autopilot endpoints
-
-apps/desktop/src/
-├── hooks/
-│   ├── useRecommendations.ts
-│   ├── useAutopilot.ts
-│   └── useFlashOnChange.ts
-└── screens/
-    └── OptimizationScreen.tsx  # Recommendations card
-```
-
----
-
-## Known Issues (as of PROMPT 012)
-
-- Backtest endpoints emit 4 `RuntimeWarning: coroutine was never awaited` warnings (cosmetic; progress callbacks in tests)
-- Lightstreamer streaming client is placeholder/simulation only; production integration deferred
-- Account update subscriptions not implemented
-- Limit/stop order simulation deferred
-
----
-
-## Phase 070-079: Hardening 🚧
-
-**Objective**: Prepare for production use
-
-### PROMPT 022: Chaos Testing Suite ✅
-
-**Objective**: Validate system handles critical failures gracefully before LIVE trading
-
-**Tests Implemented (12 scenarios)**:
-- Tier 1 (Data Corruption - BLOCKER):
-  - Disk full during ledger write
-  - Snapshot write failures
-  - Stale account balance in risk checks
-  - Ledger corruption recovery
-- Tier 2 (State Inconsistency):
-  - Partial position closes
-  - Duplicate fills / idempotency
-  - Reconciliation failures
-  - Balance refresh after fills
-- Tier 4 (Recovery):
-  - Kill switch persistence across restarts
-  - Snapshot memory leak verification
-
-**Bugs Fixed**:
-- ✅ Account balance now refreshes after every 10 fills (was: fetched once at connect)
-- ✅ Position snapshot list cleared after flush (was: unbounded memory growth)
-- ✅ Kill switch state persisted to disk and restored on startup (was: lost on restart)
-
-**Test Suite Status**:
-- 651 existing tests PASS (no regressions)
-- 12 new chaos tests added
-- Total: **663 tests**
-
-**Key Files**:
-```
-engine/tests/chaos/
-├── fixtures/               # Reusable chaos simulators
-│   ├── broker_chaos.py     # Timeouts, partial fills, stale data
-│   ├── disk_chaos.py       # Disk full, partial writes
-│   └── network_chaos.py    # Connection errors, 429 rate limits
-├── tier1_data_corruption/  # 5 tests (BLOCKER)
-├── tier2_state_inconsistency/  # 5 tests
-└── tier4_recovery/         # 2 tests
-```
-
-**Running Tests**:
+*Example API Calls:*
 ```bash
-# All Tier 1 (data corruption - must pass before LIVE)
-python3 -m pytest tests/chaos/tier1_data_corruption/ -v -m tier1
+# Single backtest
+curl -X POST http://127.0.0.1:8765/backtest/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbols": ["EURUSD"],
+    "timeframe": "1h",
+    "start": "2023-01-01T00:00:00Z",
+    "end": "2024-12-31T23:59:59Z",
+    "bots": ["TKCrossSniper", "MomentumRider"],
+    "initial_cash": 10000
+  }'
 
-# Full chaos suite
-python3 -m pytest tests/chaos/ -v -m chaos
+# Grand Sweep
+curl -X POST http://127.0.0.1:8765/backtest/sweep \
+  -H "Content-Type: application/json" \
+  -d '{
+    "bots": ["TKCrossSniper", "KumoBreaker", "MomentumRider", "TrendSurfer"],
+    "symbols": ["EURUSD", "GBPUSD", "USDJPY", "GOLD", "AUDUSD"],
+    "timeframes": ["1h"],
+    "start": "2023-01-01T00:00:00Z",
+    "end": "2024-12-31T23:59:59Z"
+  }'
 ```
 
-### Remaining Deliverables
-- [ ] Health report panel
-- [ ] Automated alerts
-- [ ] Application packaging
-- [ ] Code signing setup
+### PHASE 5: WALK-FORWARD OPTIMIZATION 🔄
+**Priority:** MEDIUM | **Status:** Not Started
+
+*Tasks:*
+- [ ] 5.1 Verify walk-forward bug fix works (`combined_metrics`).
+- [ ] 5.2 Configure and run walk-forward on top 3 bot/symbol combinations.
+- [ ] 5.3 Analyze out-of-sample performance degradation.
+- [ ] 5.4 Select final bot/symbol/params for LIVE.
+
+### PHASE 6: PAPER TRADING VALIDATION 📝
+**Priority:** HIGH | **Status:** Not Started
+
+*Tasks:*
+- [ ] 6.1 Configure engine for PAPER mode with LIVE data feed.
+- [ ] 6.2 Run selected bot for 24-48 hours.
+- [ ] 6.3 Monitor via WebSocket events and logs.
+- [ ] 6.4 Verify order generation matches backtest signals.
+- [ ] 6.5 Check for any API errors or connectivity issues.
+- [ ] 6.6 Review paper trades against backtest expectations.
+
+### PHASE 7: RISK CONTROLS & KILL SWITCH ⚠️
+**Priority:** CRITICAL | **Status:** Not Started
+
+*Tasks:*
+- [ ] 7.1 Audit kill switch implementation.
+- [ ] 7.2 Configure and document all risk parameters (`MAX_DAILY_LOSS_PCT`, etc.).
+- [ ] 7.3 Test kill switch activation manually.
+- [ ] 7.4 Verify kill switch blocks new orders and closes positions.
+- [ ] 7.5 Document kill switch reset procedure.
+
+*Example Risk Configuration:*
+```python
+risk_config = RiskConfig(
+    sizing_method=SizingMethod.RISK_PER_TRADE,
+    risk_per_trade_pct=0.5,  # 0.5% per trade
+    max_open_positions=3,
+    max_exposure_per_symbol=10000,  # £10k max per symbol
+    max_total_exposure=30000,  # £30k total
+)
+```
+
+### PHASE 8: GO-LIVE CHECKLIST ✅
+**Priority:** CRITICAL | **Status:** Not Started
+
+*Critical Reminders:*
+1. **NEVER skip paper trading** - Even 24h reveals issues.
+2. **Start with minimum position sizes** - Scale up after 1 week.
+3. **Keep kill switch tested** - Test it monthly.
+4. **Monitor daily** - At least for the first 2 weeks.
+5. **Document everything** - It helps debug issues later.
+
+*Pre-Launch Tasks:*
+- [ ] 8.1 All tests passing.
+- [ ] 8.2 Backtest results reviewed and documented.
+- [ ] 8.3 Walk-forward validation complete.
+- [ ] 8.4 Paper trading successful (48h minimum).
+- [ ] 8.5 Risk parameters configured and verified.
+- [ ] 8.6 Kill switch tested and working.
+- [ ] 8.7 IG LIVE credentials verified.
+- [ ] 8.8 Starting capital decided and funded.
+
+*Launch Day Tasks:*
+- [ ] 8.9 Set `SOLAT_MODE=LIVE` in `.env`.
+- [ ] 8.10 Start with MINIMUM position sizes.
+- [ ] 8.11 Monitor first 3 trades closely.
+- [ ] 8.12 Keep kill switch easily accessible.
 
 ---
 
-## Phase 080+: Live Trading 🚧
+## 🚀 Future Milestones (Post v3.1)
 
-**Objective**: Production LIVE trading with real money
+This section outlines planned features and improvements for future versions of SOLAT.
 
-### PROMPT 010: LIVE Trading Gating ✅
+### v3.2 - Stability & Observability
+*Objective: Enhance system monitoring, performance, and reliability.*
 
-Multi-layer safety gating to prevent accidental LIVE trading:
+- **Enhanced UI Dashboard:**
+  - [ ] Add real-time performance metrics (Sharpe, Sortino, Max Drawdown).
+  - [ ] Visualize equity curve and daily P/L.
+  - [ ] Display detailed trade history and analytics.
+- **Advanced Monitoring:**
+  - [ ] Integrate with Sentry for real-time error tracking.
+  - [ ] Add Prometheus/Grafana for system-level metrics (CPU, memory, API latency).
+- **Performance Tuning:**
+  - [ ] Optimize historical data queries for faster backtests.
+  - [ ] Profile and optimize hot paths in the trading engine.
 
-- [x] **Configuration gates**
-  - [x] `LIVE_TRADING_ENABLED` master switch (default: false)
-  - [x] `LIVE_ENABLE_TOKEN` second-factor token
-  - [x] `LIVE_ACCOUNT_ID` locked account enforcement
-  - [x] `LIVE_MAX_ORDER_SIZE` mandatory size limit
-  - [x] Risk settings validation for LIVE mode
+### v3.3 - Broker & Strategy Expansion
+*Objective: Increase the platform's versatility by adding more brokers and strategy development capabilities.*
 
-- [x] **Runtime gates**
-  - [x] Account verification (must be LIVE account, must match lock)
-  - [x] Pre-live check (config, broker, risk, safety validation)
-  - [x] UI confirmation (typed phrase + token + TTL expiry)
-  - [x] Gate evaluation before arm and before each order
+- **Multi-Broker Support:**
+  - [ ] Refactor broker client into a generic interface.
+  - [ ] Add support for a second broker (e.g., Alpaca for equities, Interactive Brokers for futures).
+- **Strategy SDK:**
+  - [ ] Develop a "Strategy SDK" to simplify the creation and testing of new bots.
+  - [ ] Add support for community-contributed strategies.
+- **Advanced Analytics:**
+  - [ ] Implement Monte Carlo simulations for portfolio-level risk analysis.
+  - [ ] Add tooling for analyzing parameter sensitivity.
 
-- [x] **UI workflow**
-  - [x] GoLiveModal multi-step confirmation
-  - [x] LiveBanner persistent warning when in LIVE mode
-  - [x] LiveModeIndicator for status display
-  - [x] useLiveGates hook for gate state
+### v4.0 - Architectural Evolution
+*Objective: Evolve the architecture to support greater scale, complexity, and intelligence.*
 
-- [x] **Engine endpoints**
-  - [x] `GET /execution/gates` - gate status
-  - [x] `POST /execution/live/confirm` - confirm LIVE mode
-  - [x] `POST /execution/live/revoke` - revoke confirmation
-  - [x] `POST /execution/prelive/run` - run pre-live check
-  - [x] `GET /execution/reconcile/report` - reconciliation status
+- **Machine Learning Integration:**
+  - [ ] Research and implement ML models for signal filtering or regime detection.
+  - [ ] Build a pipeline for training, validating, and deploying ML models.
+- **Event-Sourced Architecture:**
+  - [ ] Explore migrating the trade ledger to an event-sourcing model for a perfect audit trail.
+- **Cloud-Native Backtesting:**
+  - [ ] Design a system to run large-scale backtest sweeps on cloud services (e.g., AWS Batch, Google Cloud Run) for massive parallelization.
 
-- [x] **Order lifecycle**
-  - [x] Order state machine with valid transitions
-  - [x] OrderTracker for lifecycle tracking
-  - [x] OrderRegistry for idempotency
+---
 
-- [x] **Documentation**
-  - [x] `docs/LIVE_RUNBOOK.md` - operational procedures
+## 🚨 Emergency Procedures
 
-### Key Files
-```
-engine/solat_engine/execution/
-├── gates.py           # Multi-layer trading gates
-├── models.py          # Order state machine + tracker
-├── router.py          # Gate integration for arm/route
-└── safety.py          # Circuit breaker + idempotency
+*This section is a critical reference and should be kept up-to-date.*
 
-engine/solat_engine/api/
-└── execution_routes.py   # LIVE endpoints
+### If things go wrong:
+1. **Activate kill switch**: `curl -X POST http://127.0.0.1:8765/execution/kill-switch/activate -H "Content-Type: application/json" -d '{"reason":"emergency"}'`
+2. **Check IG platform directly**: Manually close positions if necessary.
+3. **Stop engine**: `Ctrl+C` in the terminal or `kill <PID>`.
+4. **Review logs**: `tail -f engine/logs/solat.log`
 
-apps/desktop/src/
-├── components/
-│   ├── GoLiveModal.tsx   # Multi-step LIVE enable
-│   └── LiveBanner.tsx    # LIVE mode indicators
-└── hooks/
-    └── useLiveGates.ts   # Gate state management
+### If credentials are exposed:
+1. **Immediately** revoke the exposed credentials in the IG settings.
+2. Generate new API keys and rotate all related passwords.
+3. Audit recent account activity for any unauthorized actions.
+4. Update credentials in your secure `.env` file.
 
-docs/
-└── LIVE_RUNBOOK.md       # Operational procedures
-```
-
-### Remaining Deliverables
-- [ ] Live credential management
-- [ ] A/B testing framework (paper vs live shadow)
-- [ ] Small-size live validation
-- [ ] Full deployment checklist
-- [ ] Monitoring and alerting
-- [ ] Disaster recovery plan
+### IG Support:
+- **UK:** 0800 409 6789
+- **International:** +44 20 7896 0011
+- **Platform:** https://www.ig.com/uk

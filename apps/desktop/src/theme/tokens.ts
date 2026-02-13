@@ -1,7 +1,7 @@
 /**
  * Design system tokens for SOLAT Trading Terminal.
  *
- * Light-first theme with trading-grade color semantics.
+ * Professional light theme with trading-grade color semantics.
  * All tokens are exposed as CSS custom properties in styles.css.
  */
 
@@ -11,64 +11,68 @@
 
 export const colors = {
   // Backgrounds
-  bgApp: "#f5f6f8",
+  bgApp: "#f0f2f5",
+  bgPrimary: "#ffffff",
+  bgSecondary: "#f0f2f5",
+  bgTertiary: "#e8ebf0",
   bgCard: "#ffffff",
-  bgCardHover: "#fafbfc",
-  bgMuted: "#eef0f4",
-  bgInset: "#e8eaef",
+  bgCardHover: "#f5f7fa",
+  bgMuted: "#e8ebf0",
+  bgInset: "#ebedf2",
 
   // Text
-  textPrimary: "#1a1d23",
-  textSecondary: "#5c6370",
-  textMuted: "#9da5b4",
+  textPrimary: "#1a1d28",
+  textSecondary: "#5f6775",
+  textMuted: "#8b919e",
   textInverse: "#ffffff",
 
   // Borders
-  borderDefault: "#dfe1e6",
-  borderLight: "#eceef2",
-  borderFocus: "#4c8bf5",
+  borderDefault: "#d5d9e0",
+  borderLight: "#e5e8ed",
+  borderFocus: "#3d8bfd",
 
   // Accents — Trading
-  buyGreen: "#16a34a",
-  buyGreenBg: "rgba(22, 163, 74, 0.08)",
-  sellRed: "#dc2626",
-  sellRedBg: "rgba(220, 38, 38, 0.08)",
+  buyGreen: "#00d68f",
+  buyGreenBg: "rgba(0, 214, 143, 0.10)",
+  sellRed: "#f45b69",
+  sellRedBg: "rgba(244, 91, 105, 0.10)",
 
   // Accents — UI
-  accentBlue: "#2563eb",
-  accentBlueBg: "rgba(37, 99, 235, 0.08)",
-  accentYellow: "#d97706",
-  accentYellowBg: "rgba(217, 119, 6, 0.08)",
-  accentPurple: "#7c3aed",
-  accentPurpleBg: "rgba(124, 58, 237, 0.08)",
+  accentBlue: "#3d8bfd",
+  accentBlueBg: "rgba(61, 139, 253, 0.10)",
+  accentYellow: "#f7b955",
+  accentYellowBg: "rgba(247, 185, 85, 0.10)",
+  accentPurple: "#a78bfa",
+  accentPurpleBg: "rgba(167, 139, 250, 0.10)",
 
   // Live mode warning
-  liveRed: "#dc2626",
-  liveRedBg: "rgba(220, 38, 38, 0.12)",
+  liveRed: "#f45b69",
+  liveRedBg: "rgba(244, 91, 105, 0.15)",
 
   // Chart
   chartBg: "#ffffff",
-  chartGrid: "#f0f1f3",
-  chartText: "#5c6370",
-  chartCrosshair: "#9da5b4",
-  chartCrosshairLabel: "#eef0f4",
-  candleUp: "#16a34a",
-  candleDown: "#dc2626",
+  chartGrid: "#e8ebf0",
+  chartText: "#5f6775",
+  chartBorder: "#d5d9e0",
+  chartCrosshair: "#8b919e",
+  chartCrosshairLabel: "#e8ebf0",
+  candleUp: "#00d68f",
+  candleDown: "#f45b69",
 
   // Shadows
   shadowSm: "0 1px 2px rgba(0, 0, 0, 0.06)",
   shadowMd: "0 2px 8px rgba(0, 0, 0, 0.08)",
-  shadowLg: "0 4px 16px rgba(0, 0, 0, 0.1)",
+  shadowLg: "0 4px 16px rgba(0, 0, 0, 0.12)",
 
-  // Overlay line colors (for chart indicators)
-  overlayEma: ["#2563eb", "#d97706", "#7c3aed", "#16a34a"],
+  // Overlay line colors (for chart indicators — light-theme optimized)
+  overlayEma: ["#2563eb", "#d97706", "#7c3aed", "#059669"],
   overlaySma: ["#0891b2", "#db2777", "#ca8a04", "#059669"],
-  overlayBollinger: ["#6b7280", "#6b7280", "#6b7280"],
-  overlayIchimoku: ["#16a34a", "#dc2626", "#d97706", "#9da5b4", "#a78bfa"],
+  overlayBollinger: ["#7a8290", "#7a8290", "#7a8290"],
+  overlayIchimoku: ["#059669", "#e11d48", "#d97706", "#7a8290", "#7c3aed"],
   overlayRsi: ["#7c3aed"],
-  overlayMacd: ["#2563eb", "#dc2626", "#16a34a"],
+  overlayMacd: ["#2563eb", "#e11d48", "#059669"],
   overlayStoch: ["#2563eb", "#d97706"],
-  overlayAtr: ["#6b7280"],
+  overlayAtr: ["#7a8290"],
 } as const;
 
 // =============================================================================
@@ -89,10 +93,10 @@ export const spacing = {
 // =============================================================================
 
 export const radius = {
-  sm: "4px",
-  md: "6px",
-  lg: "8px",
-  xl: "12px",
+  sm: "3px",
+  md: "5px",
+  lg: "6px",
+  xl: "8px",
   full: "9999px",
 } as const;
 
@@ -101,8 +105,8 @@ export const radius = {
 // =============================================================================
 
 export const fonts = {
-  sans: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-  mono: '"SF Mono", Monaco, "Cascadia Code", "Fira Code", monospace',
+  sans: "'Geist', -apple-system, BlinkMacSystemFont, sans-serif",
+  mono: "'JetBrains Mono', 'SF Mono', Monaco, monospace",
 } as const;
 
 export const fontSizes = {
@@ -120,8 +124,8 @@ export const fontSizes = {
 // =============================================================================
 
 export const categoryColors = {
-  trend: { bg: "rgba(22, 163, 74, 0.1)", text: "#16a34a" },
-  momentum: { bg: "rgba(37, 99, 235, 0.1)", text: "#2563eb" },
-  reversal: { bg: "rgba(217, 119, 6, 0.1)", text: "#d97706" },
-  breakout: { bg: "rgba(124, 58, 237, 0.1)", text: "#7c3aed" },
+  trend: { bg: "rgba(0, 214, 143, 0.10)", text: "#00d68f" },
+  momentum: { bg: "rgba(61, 139, 253, 0.10)", text: "#3d8bfd" },
+  reversal: { bg: "rgba(247, 185, 85, 0.10)", text: "#f7b955" },
+  breakout: { bg: "rgba(167, 139, 250, 0.10)", text: "#a78bfa" },
 } as const;

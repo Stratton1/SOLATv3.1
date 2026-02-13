@@ -8,6 +8,7 @@ Includes direction, confidence, suggested sizing, and reasoning.
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -90,7 +91,7 @@ class Signal(BaseModel):
         default_factory=list,
         description="Reason codes explaining why signal was generated",
     )
-    metadata: dict = Field(
+    metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional strategy-specific metadata",
     )

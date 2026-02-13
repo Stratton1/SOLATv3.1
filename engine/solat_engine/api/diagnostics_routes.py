@@ -11,7 +11,7 @@ Provides system health and performance metrics:
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from solat_engine.api.rate_limit import (
@@ -20,7 +20,7 @@ from solat_engine.api.rate_limit import (
     get_signals_cache,
     get_signals_rate_limiter,
 )
-from solat_engine.logging import get_logger
+from solat_engine.logging import get_in_memory_logs, get_logger
 from solat_engine.market_data.publisher import get_publisher
 from solat_engine.runtime.ws_throttle import get_ws_throttler
 
@@ -84,16 +84,32 @@ class FullDiagnostics(BaseModel):
     timestamp: str
 
 
+class LogEntry(BaseModel):
+    """A single log entry."""
+
+    timestamp: str
+    level: str
+    logger: str
+    message: str
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+
+class LogsResponse(BaseModel):
+    """Recent logs response."""
+
+    logs: list[LogEntry]
+
+
 # =============================================================================
 # Global state references (set by main.py)
 # =============================================================================
 
 # These are set by main.py during startup
-_ws_clients_ref: list | None = None
+_ws_clients_ref: list[Any] | None = None
 _market_controller_ref: Any = None
 
 
-def set_ws_clients_ref(clients: list) -> None:
+def set_ws_clients_ref(clients: list[Any]) -> None:
     """Set reference to WebSocket clients list."""
     global _ws_clients_ref
     _ws_clients_ref = clients
@@ -245,4 +261,30 @@ async def get_all_diagnostics() -> FullDiagnostics:
         rate_limiters=rate_limiters,
         stream_health=stream_health,
         timestamp=datetime.now(UTC).isoformat(),
+    )
+
+
+@router.get("/logs", response_model=LogsResponse)
+async def get_logs(
+    level: str = Query(default="INFO", description="Minimum log level"),
+    limit: int = Query(default=50, ge=1, le=1000, description="Max logs to return"),
+) -> LogsResponse:
+    """
+    Get recent logs from memory.
+
+    Provides a tail of the engine's log stream for the UI.
+    """
+    logs = get_in_memory_logs(level=level, limit=limit)
+    # Map to LogEntry model
+    return LogsResponse(
+        logs=[
+            LogEntry(
+                timestamp=l["timestamp"],
+                level=l["level"],
+                logger=l["logger"],
+                message=l["message"],
+                extra=l["extra"],
+            )
+            for l in logs
+        ]
     )

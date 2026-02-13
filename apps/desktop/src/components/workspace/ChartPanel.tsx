@@ -11,6 +11,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CandleChart } from "../CandleChart";
 import { DrawingToolbar } from "../DrawingToolbar";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "../ContextMenu";
+import { StrategyPopover } from "./StrategyPopover";
+import { IndicatorPopover } from "./IndicatorPopover";
 import { useBars } from "../../hooks/useBars";
 import { useOverlays } from "../../hooks/useOverlays";
 import { useSignals } from "../../hooks/useSignals";
@@ -19,10 +21,9 @@ import { useMarketStatus } from "../../hooks/useMarketStatus";
 import { useMarketSubscription } from "../../hooks/useMarketSubscription";
 import { useWorkspace } from "../../hooks/useWorkspace";
 import { useWsEvents, QuoteUpdateEvent, BarUpdateEvent } from "../../hooks/useWsEvents";
-import { useAvailability } from "../../hooks/useAvailability";
 import { useExecutionEvents } from "../../hooks/useExecutionEvents";
 import { useDrawings } from "../../hooks/useDrawings";
-import { Panel, TIMEFRAMES, LinkGroup } from "../../lib/workspace";
+import { Panel, PanelBot, PanelIndicator, TIMEFRAMES, LinkGroup } from "../../lib/workspace";
 import { Drawing, DEFAULT_DRAWING_COLOR } from "../../lib/drawings";
 
 // =============================================================================
@@ -43,7 +44,7 @@ const LINK_GROUPS: LinkGroup[] = ["none", "A", "B", "C"];
 
 export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartPanelProps) {
   const { updatePanel, setLinkedTimeframe, setLinkedSymbol } = useWorkspace();
-  const { enrichedItems } = useCatalogue();
+  const { items: catalogueItems } = useCatalogue();
   const { status: marketStatus } = useMarketStatus();
   const { subscribe } = useMarketSubscription();
 
@@ -52,6 +53,8 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
   const [symbolSearch, setSymbolSearch] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [quote, setQuote] = useState<QuoteUpdateEvent | null>(null);
+  const [showStrategyPopover, setShowStrategyPopover] = useState(false);
+  const [showIndicatorPopover, setShowIndicatorPopover] = useState(false);
 
   // Data hooks
   const {
@@ -80,11 +83,17 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
     indicators: shouldFetchOverlays ? enabledIndicators : [],
   });
 
-  const shouldFetchSignals = panel.showMarkers && (isFocused || isOnlyPanel);
+  const enabledBots = useMemo(
+    () => panel.bots.filter((b) => b.enabled).map((b) => b.id),
+    [panel.bots]
+  );
+  const shouldFetchSignals = panel.showMarkers && enabledBots.length > 0 && (isFocused || isOnlyPanel);
   const { signals } = useSignals({
     symbol: panel.symbol,
     timeframe: panel.timeframe,
+    strategies: enabledBots,
     enabled: shouldFetchSignals,
+    debounceMs: 500,
   });
 
   // Execution markers + SL/TP levels
@@ -137,11 +146,11 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
 
   // Subscribe to symbol on mount
   useEffect(() => {
-    const item = enrichedItems.find((i) => i.symbol === panel.symbol);
+    const item = catalogueItems.find((i) => i.symbol === panel.symbol);
     if (item && marketStatus && !marketStatus.subscriptions.includes(panel.symbol)) {
       subscribe([panel.symbol], "stream").catch(console.error);
     }
-  }, [panel.symbol, enrichedItems, marketStatus, subscribe]);
+  }, [panel.symbol, catalogueItems, marketStatus, subscribe]);
 
   // Handle deep link from blotter/palette (sessionStorage) — run once on mount
   useEffect(() => {
@@ -169,14 +178,12 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
   // Filter symbols for search
   const filteredSymbols = useMemo(() => {
     const query = symbolSearch.toLowerCase();
-    return enrichedItems.filter(
+    return catalogueItems.filter(
       (item) =>
         item.symbol.toLowerCase().includes(query) ||
         item.display_name.toLowerCase().includes(query)
     );
-  }, [enrichedItems, symbolSearch]);
-
-  const { isTimeframeAvailable } = useAvailability();
+  }, [catalogueItems, symbolSearch]);
 
   // Handlers
   const handleSymbolChange = useCallback(
@@ -208,9 +215,19 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
     [panel.id, updatePanel]
   );
 
-  const toggleMarkers = useCallback(() => {
-    updatePanel(panel.id, { showMarkers: !panel.showMarkers });
-  }, [panel.id, panel.showMarkers, updatePanel]);
+  const handleBotsUpdate = useCallback(
+    (bots: PanelBot[]) => {
+      updatePanel(panel.id, { bots, showMarkers: true });
+    },
+    [panel.id, updatePanel]
+  );
+
+  const handleIndicatorsUpdate = useCallback(
+    (indicators: PanelIndicator[]) => {
+      updatePanel(panel.id, { indicators });
+    },
+    [panel.id, updatePanel]
+  );
 
   const toggleSlTp = useCallback(() => {
     updatePanel(panel.id, { showSlTp: !(panel.showSlTp !== false) });
@@ -271,6 +288,7 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
               {quote && (
                 <span className="panel-price">{quote.mid.toFixed(5)}</span>
               )}
+              <span className="panel-symbol-caret">{showSymbolDropdown ? "\u25B2" : "\u25BC"}</span>
             </button>
 
             {showSymbolDropdown && (
@@ -304,9 +322,8 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
             {TIMEFRAMES.map((tf) => (
               <button
                 key={tf}
-                className={`panel-tf-btn ${panel.timeframe === tf ? "active" : ""} ${!isTimeframeAvailable(panel.symbol, tf) ? "dimmed" : ""}`}
+                className={`panel-tf-btn ${panel.timeframe === tf ? "active" : ""}`}
                 onClick={() => handleTimeframeChange(tf)}
-                title={!isTimeframeAvailable(panel.symbol, tf) ? "No data available" : undefined}
               >
                 {tf}
               </button>
@@ -323,56 +340,90 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
             />
           )}
 
-          {/* Link Group */}
-          <div className="panel-link-selector">
-            {LINK_GROUPS.map((lg) => (
+          {/* Overlay Toggles */}
+          <div className="panel-overlay-toggles">
+            <div style={{ position: "relative" }}>
               <button
-                key={lg}
-                className={`panel-link-btn ${panel.linkGroup === lg ? "active" : ""}`}
-                onClick={() => handleLinkGroupChange(lg)}
-                title={lg === "none" ? "Unlinked" : `Link Group ${lg}`}
+                className={`panel-toggle-btn ${enabledBots.length > 0 ? "active" : ""}`}
+                onClick={() => setShowStrategyPopover(!showStrategyPopover)}
+                title="Select strategies for signals"
               >
-                {lg === "none" ? "○" : lg}
+                Signals{enabledBots.length > 0 ? ` (${enabledBots.length})` : ""}
               </button>
-            ))}
+              {showStrategyPopover && (
+                <StrategyPopover
+                  bots={panel.bots}
+                  onUpdate={handleBotsUpdate}
+                  onClose={() => setShowStrategyPopover(false)}
+                />
+              )}
+            </div>
+            <div style={{ position: "relative" }}>
+              <button
+                className={`panel-toggle-btn ${enabledIndicators.length > 0 ? "active" : ""}`}
+                onClick={() => setShowIndicatorPopover(!showIndicatorPopover)}
+                title="Manage indicators"
+              >
+                Ind ({enabledIndicators.length})
+              </button>
+              {showIndicatorPopover && (
+                <IndicatorPopover
+                  indicators={panel.indicators}
+                  onUpdate={handleIndicatorsUpdate}
+                  onClose={() => setShowIndicatorPopover(false)}
+                />
+              )}
+            </div>
+            <button
+              className={`panel-toggle-btn ${showExec ? "active" : ""}`}
+              onClick={toggleExecutions}
+              title="Execution markers"
+            >
+              Exec
+            </button>
+            <button
+              className={`panel-toggle-btn ${showSlTp ? "active" : ""}`}
+              onClick={toggleSlTp}
+              title="SL/TP levels"
+            >
+              SL/TP
+            </button>
           </div>
 
-          {/* Markers Toggle */}
-          <button
-            className={`panel-markers-btn ${panel.showMarkers ? "active" : ""}`}
-            onClick={toggleMarkers}
-            title="Toggle signal markers"
-          >
-            ◆
-          </button>
-
-          {/* Executions Toggle */}
-          <button
-            className={`panel-markers-btn ${showExec ? "active" : ""}`}
-            onClick={toggleExecutions}
-            title="Toggle execution markers"
-          >
-            ⬥
-          </button>
-
-          {/* SL/TP Toggle */}
-          <button
-            className={`panel-markers-btn ${showSlTp ? "active" : ""}`}
-            onClick={toggleSlTp}
-            title="Toggle SL/TP lines"
-          >
-            ═
-          </button>
+          {/* Link Group (only useful in multi-panel layouts) */}
+          {!isOnlyPanel && (
+            <div className="panel-link-selector">
+              {LINK_GROUPS.map((lg) => (
+                <button
+                  key={lg}
+                  className={`panel-link-btn ${panel.linkGroup === lg ? "active" : ""}`}
+                  onClick={() => handleLinkGroupChange(lg)}
+                  title={lg === "none" ? "Unlinked" : `Link Group ${lg}`}
+                >
+                  {lg === "none" ? "\u25CB" : lg}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Chart Area */}
       <div className="panel-chart">
         {barsLoading ? (
-          <div className="panel-loading">Loading...</div>
+          <div className="panel-loading">
+            <div className="panel-loading-inner">
+              <div className="panel-loading-spinner" />
+              <span>Loading {panel.symbol} {panel.timeframe}...</span>
+            </div>
+          </div>
         ) : bars.length === 0 ? (
           <div className="panel-empty">
-            <p>No data for {panel.symbol} {panel.timeframe}</p>
+            <div className="panel-empty-inner">
+              <span className="panel-empty-icon">&#x1F4CA;</span>
+              <p>No data for {panel.symbol} {panel.timeframe}</p>
+              <p className="panel-empty-hint">Run Quick Sync from the Library tab to fetch historical bars.</p>
+            </div>
           </div>
         ) : (
           <CandleChart

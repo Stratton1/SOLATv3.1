@@ -13,14 +13,6 @@ import { LayoutType } from "../../lib/workspace";
 import { WorkspaceGrid } from "./WorkspaceGrid";
 
 // =============================================================================
-// Types
-// =============================================================================
-
-interface WorkspaceShellProps {
-  onOpenStrategy?: () => void;
-}
-
-// =============================================================================
 // Layout Icons
 // =============================================================================
 
@@ -68,7 +60,7 @@ const LayoutIcon = ({ layout }: { layout: LayoutType }) => {
 // Component
 // =============================================================================
 
-export function WorkspaceShell({ onOpenStrategy }: WorkspaceShellProps) {
+export function WorkspaceShell() {
   const {
     workspace,
     workspaces,
@@ -203,13 +195,7 @@ export function WorkspaceShell({ onOpenStrategy }: WorkspaceShellProps) {
           </div>
         </div>
 
-        <div className="toolbar-right">
-          {onOpenStrategy && (
-            <button className="strategy-btn" onClick={onOpenStrategy}>
-              Strategy
-            </button>
-          )}
-        </div>
+        <div className="toolbar-right" />
       </div>
 
       {/* Workspace Grid */}

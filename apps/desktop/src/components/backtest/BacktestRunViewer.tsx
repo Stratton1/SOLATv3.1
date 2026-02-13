@@ -9,12 +9,15 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import Plotly from "plotly.js-finance-dist";
+import { PlotlyChart } from "../PlotlyChart";
 import {
   engineClient,
   BacktestResultsResponse,
   BacktestTradesResponse,
   BacktestEquityResponse,
 } from "../../lib/engineClient";
+import { formatPnl } from "../../lib/format";
 
 interface BacktestRunViewerProps {
   runId: string;
@@ -258,7 +261,7 @@ function MetricsTab({ results }: { results: BacktestResultsResponse }) {
                 <span>{(bot.win_rate * 100).toFixed(1)}%</span>
                 <span>{bot.sharpe.toFixed(2)}</span>
                 <span className={bot.pnl >= 0 ? "positive" : "negative"}>
-                  {bot.pnl.toFixed(2)}
+                  {formatPnl(bot.pnl)}
                 </span>
               </div>
             ))}
@@ -357,12 +360,25 @@ function EquityTab({ equity }: { equity: BacktestEquityResponse | null }) {
     return <div className="equity-empty">No equity data available</div>;
   }
 
-  // Simple text-based representation for now
   const start = equity.points[0].equity;
   const end = equity.points[equity.points.length - 1].equity;
   const change = ((end - start) / start) * 100;
   const maxEquity = Math.max(...equity.points.map((p) => p.equity));
   const minEquity = Math.min(...equity.points.map((p) => p.equity));
+
+  const traceData: Plotly.Data[] = [
+    {
+      type: "scatter" as const,
+      mode: "lines" as const,
+      x: equity.points.map((p) => p.timestamp),
+      y: equity.points.map((p) => p.equity),
+      fill: "tozeroy" as const,
+      fillcolor: change >= 0 ? "rgba(0, 214, 143, 0.12)" : "rgba(244, 91, 105, 0.12)",
+      line: { color: change >= 0 ? "#00d68f" : "#f45b69", width: 2 },
+      showlegend: false,
+      hoverinfo: "x+y" as const,
+    },
+  ];
 
   return (
     <div className="equity-tab">
@@ -391,9 +407,17 @@ function EquityTab({ equity }: { equity: BacktestEquityResponse | null }) {
         </div>
       </div>
 
-      <div className="equity-chart-placeholder">
-        <p>Equity curve visualization</p>
-        <p className="hint">{equity.points.length} data points</p>
+      <div style={{ height: 280 }}>
+        <PlotlyChart
+          data={traceData}
+          layout={{
+            height: 280,
+            margin: { l: 60, r: 20, t: 10, b: 30 },
+            xaxis: { type: "date" as const, gridcolor: "#e8ebf0", linecolor: "#d5d9e0" },
+            yaxis: { gridcolor: "#e8ebf0", linecolor: "#d5d9e0" },
+          }}
+          config={{ displayModeBar: false, scrollZoom: false }}
+        />
       </div>
     </div>
   );

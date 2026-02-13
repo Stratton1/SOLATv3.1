@@ -148,23 +148,40 @@ export function useWsEvents({
         if (!mounted) return;
 
         try {
-          const data = JSON.parse(event.data) as WsEvent;
+          const data = JSON.parse(event.data) as WsEvent | Record<string, unknown>;
+          const eventType = typeof data.type === "string" ? data.type : "";
 
-          switch (data.type) {
+          switch (eventType) {
             case "quote_update":
-              handlersRef.current.onQuote?.(data);
+              handlersRef.current.onQuote?.(data as QuoteUpdateEvent);
               break;
             case "bar_update":
-              handlersRef.current.onBar?.(data);
+              handlersRef.current.onBar?.(data as BarUpdateEvent);
               break;
             case "market_status":
-              handlersRef.current.onMarketStatus?.(data);
+              handlersRef.current.onMarketStatus?.(data as MarketStatusEvent);
               break;
             case "execution_event":
-              handlersRef.current.onExecution?.(data);
+              handlersRef.current.onExecution?.(data as ExecutionEvent);
+              break;
+            case "execution.status":
+            case "execution.intent_created":
+            case "execution.order_submitted":
+            case "execution.order_rejected":
+            case "execution.order_acknowledged":
+            case "execution.positions_updated":
+            case "execution.reconciliation_warning":
+            case "execution.kill_switch_activated":
+            case "execution.kill_switch_reset":
+              handlersRef.current.onExecution?.({
+                type: "execution_event",
+                event_type: eventType,
+                data: data as Record<string, unknown>,
+              });
               break;
             case "heartbeat":
-              handlersRef.current.onHeartbeat?.(data);
+            case "system.heartbeat":
+              handlersRef.current.onHeartbeat?.(data as HeartbeatEvent);
               break;
           }
         } catch {

@@ -5,6 +5,7 @@ Fetches historical bars to fill gaps after reconnection events.
 """
 
 from datetime import UTC, datetime, timedelta
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from solat_engine.data.ig_history import IGHistoryFetcher
@@ -212,7 +213,7 @@ class BackfillService:
 def create_backfill_callback(
     backfill_service: BackfillService,
     timeframe: SupportedTimeframe = SupportedTimeframe.M1,
-):
+) -> Callable[[str, int], Awaitable[int]]:
     """
     Create a backfill callback for use with MarketDataController.
 

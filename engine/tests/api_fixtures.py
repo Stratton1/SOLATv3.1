@@ -49,6 +49,11 @@ class TestSettings:
     ig_acc_type: TradingMode = TradingMode.DEMO
     ig_base_url_demo: str = "https://demo-api.ig.com/gateway/deal"
     ig_base_url_live: str = "https://api.ig.com/gateway/deal"
+    ig_request_timeout: float = 10.0
+    ig_max_retries: int = 3
+    ig_rate_limit_rps: float = 2.0
+    ig_rate_limit_burst: int = 10
+    history_max_rows_per_call: int = 50000
     _has_ig_credentials_override: bool | None = field(default=None, repr=False)
 
     @property

@@ -5,6 +5,7 @@ Defines the contract for trading strategies (the "Elite 8" and beyond).
 """
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from solat_engine.domain import Bar, Position, Signal, Timeframe
 
@@ -72,7 +73,7 @@ class Strategy(ABC):
         return 100
 
     @property
-    def parameters(self) -> dict:
+    def parameters(self) -> dict[str, Any]:
         """
         Strategy parameters (for optimization).
 

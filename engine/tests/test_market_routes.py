@@ -12,10 +12,6 @@ from fastapi.testclient import TestClient
 
 from solat_engine.api.market_data_routes import get_catalogue_store
 from solat_engine.config import get_settings_dep
-from solat_engine.main import app
-
-client = TestClient(app)
-
 
 # =============================================================================
 # Fixtures
@@ -73,9 +69,9 @@ def mock_catalogue_with_epics():
 class TestMarketStatus:
     """Tests for /market/status endpoint."""
 
-    def test_status_when_not_started(self) -> None:
+    def test_status_when_not_started(self, app_client: TestClient) -> None:
         """Status should show not connected when service not started."""
-        response = client.get("/market/status")
+        response = app_client.get("/market/status")
 
         assert response.status_code == 200
         data = response.json()
@@ -83,9 +79,9 @@ class TestMarketStatus:
         assert data["mode"] == "poll"
         assert data["subscriptions"] == []
 
-    def test_status_includes_all_fields(self) -> None:
+    def test_status_includes_all_fields(self, app_client: TestClient) -> None:
         """Status response should include all expected fields."""
-        response = client.get("/market/status")
+        response = app_client.get("/market/status")
 
         assert response.status_code == 200
         data = response.json()
@@ -106,18 +102,18 @@ class TestMarketStatus:
 class TestMarketSubscribe:
     """Tests for /market/subscribe endpoint."""
 
-    def test_subscribe_requires_symbols(self) -> None:
+    def test_subscribe_requires_symbols(self, app_client: TestClient) -> None:
         """Subscribe should require at least one symbol."""
-        response = client.post(
+        response = app_client.post(
             "/market/subscribe",
             json={"symbols": [], "mode": "poll"},
         )
 
         assert response.status_code == 422  # Validation error
 
-    def test_subscribe_validates_mode(self) -> None:
+    def test_subscribe_validates_mode(self, app_client: TestClient) -> None:
         """Subscribe should reject invalid mode."""
-        response = client.post(
+        response = app_client.post(
             "/market/subscribe",
             json={"symbols": ["EURUSD"], "mode": "invalid"},
         )
@@ -125,79 +121,60 @@ class TestMarketSubscribe:
         assert response.status_code == 400
         assert "Invalid mode" in response.json()["detail"]
 
-    def test_subscribe_without_ig_credentials(self) -> None:
+    def test_subscribe_without_ig_credentials(self, app_client: TestClient, mock_settings: MagicMock, overrider) -> None:
         """Subscribe should fail gracefully without IG credentials."""
-        mock_settings = MagicMock()
         mock_settings.has_ig_credentials = False
+        overrider.override(get_settings_dep, lambda: mock_settings)
 
-        app.dependency_overrides[get_settings_dep] = lambda: mock_settings
+        response = app_client.post(
+            "/market/subscribe",
+            json={"symbols": ["EURUSD"], "mode": "poll"},
+        )
 
-        try:
-            response = client.post(
-                "/market/subscribe",
-                json={"symbols": ["EURUSD"], "mode": "poll"},
-            )
-
-            assert response.status_code == 200
-            data = response.json()
-            assert data["ok"] is False
-            assert "IG credentials not configured" in data["message"]
-        finally:
-            app.dependency_overrides.clear()
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is False
+        assert "IG credentials not configured" in data["message"]
 
     def test_subscribe_symbol_not_in_catalogue(
-        self, mock_catalogue_with_epics
+        self, app_client: TestClient, mock_catalogue_with_epics, overrider
     ) -> None:
         """Subscribe should fail for symbol not in catalogue."""
-        mock_settings = MagicMock()
-        mock_settings.has_ig_credentials = True
+        overrider.override(get_catalogue_store, lambda: mock_catalogue_with_epics)
 
-        app.dependency_overrides[get_settings_dep] = lambda: mock_settings
-        app.dependency_overrides[get_catalogue_store] = lambda: mock_catalogue_with_epics
+        response = app_client.post(
+            "/market/subscribe",
+            json={"symbols": ["UNKNOWN"], "mode": "poll"},
+        )
 
-        try:
-            response = client.post(
-                "/market/subscribe",
-                json={"symbols": ["UNKNOWN"], "mode": "poll"},
-            )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is False
+        assert len(data["failed"]) == 1
+        assert data["failed"][0]["symbol"] == "UNKNOWN"
+        assert "not in catalogue" in data["failed"][0]["error"]
 
-            assert response.status_code == 200
-            data = response.json()
-            assert data["ok"] is False
-            assert len(data["failed"]) == 1
-            assert data["failed"][0]["symbol"] == "UNKNOWN"
-            assert "not in catalogue" in data["failed"][0]["error"]
-        finally:
-            app.dependency_overrides.clear()
-
-    def test_subscribe_symbol_without_epic(self, mock_catalogue_with_epics) -> None:
+    def test_subscribe_symbol_without_epic(self, app_client: TestClient, mock_catalogue_with_epics, overrider) -> None:
         """Subscribe should fail for symbol without epic mapping."""
-        mock_settings = MagicMock()
-        mock_settings.has_ig_credentials = True
+        overrider.override(get_catalogue_store, lambda: mock_catalogue_with_epics)
 
-        app.dependency_overrides[get_settings_dep] = lambda: mock_settings
-        app.dependency_overrides[get_catalogue_store] = lambda: mock_catalogue_with_epics
+        response = app_client.post(
+            "/market/subscribe",
+            json={"symbols": ["USDJPY"], "mode": "poll"},
+        )
 
-        try:
-            response = client.post(
-                "/market/subscribe",
-                json={"symbols": ["USDJPY"], "mode": "poll"},
-            )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is False
+        assert len(data["failed"]) == 1
+        assert "No epic mapping" in data["failed"][0]["error"]
 
-            assert response.status_code == 200
-            data = response.json()
-            assert data["ok"] is False
-            assert len(data["failed"]) == 1
-            assert "No epic mapping" in data["failed"][0]["error"]
-        finally:
-            app.dependency_overrides.clear()
-
-    def test_subscribe_max_symbols_enforced(self) -> None:
+    def test_subscribe_max_symbols_enforced(self, app_client: TestClient) -> None:
         """Subscribe should reject more than max symbols."""
         # Max is 20
         symbols = [f"SYM{i}" for i in range(25)]
 
-        response = client.post(
+        response = app_client.post(
             "/market/subscribe",
             json={"symbols": symbols, "mode": "poll"},
         )
@@ -213,9 +190,9 @@ class TestMarketSubscribe:
 class TestMarketUnsubscribe:
     """Tests for /market/unsubscribe endpoint."""
 
-    def test_unsubscribe_when_not_running(self) -> None:
+    def test_unsubscribe_when_not_running(self, app_client: TestClient) -> None:
         """Unsubscribe should handle not-running service gracefully."""
-        response = client.post(
+        response = app_client.post(
             "/market/unsubscribe",
             json={"symbols": ["EURUSD"]},
         )
@@ -225,9 +202,9 @@ class TestMarketUnsubscribe:
         assert data["ok"] is True
         assert "not running" in data["message"]
 
-    def test_unsubscribe_all_with_empty_list(self) -> None:
+    def test_unsubscribe_all_with_empty_list(self, app_client: TestClient) -> None:
         """Empty symbols list should unsubscribe all."""
-        response = client.post(
+        response = app_client.post(
             "/market/unsubscribe",
             json={"symbols": []},
         )
@@ -245,18 +222,18 @@ class TestMarketUnsubscribe:
 class TestMarketQuotes:
     """Tests for /market/quotes endpoint."""
 
-    def test_quotes_returns_empty_when_no_subscriptions(self) -> None:
+    def test_quotes_returns_empty_when_no_subscriptions(self, app_client: TestClient) -> None:
         """Quotes should return empty when nothing subscribed."""
-        response = client.get("/market/quotes")
+        response = app_client.get("/market/quotes")
 
         assert response.status_code == 200
         data = response.json()
         assert data["quotes"] == {}
         assert data["count"] == 0
 
-    def test_quotes_accepts_symbol_filter(self) -> None:
+    def test_quotes_accepts_symbol_filter(self, app_client: TestClient) -> None:
         """Quotes should accept comma-separated symbol filter."""
-        response = client.get("/market/quotes?symbols=EURUSD,GBPUSD")
+        response = app_client.get("/market/quotes?symbols=EURUSD,GBPUSD")
 
         assert response.status_code == 200
         data = response.json()
@@ -272,9 +249,9 @@ class TestMarketQuotes:
 class TestMarketStop:
     """Tests for /market/stop endpoint."""
 
-    def test_stop_when_not_running(self) -> None:
+    def test_stop_when_not_running(self, app_client: TestClient) -> None:
         """Stop should handle not-running service gracefully."""
-        response = client.post("/market/stop")
+        response = app_client.post("/market/stop")
 
         assert response.status_code == 200
         data = response.json()

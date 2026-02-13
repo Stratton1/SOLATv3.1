@@ -5,8 +5,10 @@ Provides server-side computation of indicators and signal markers
 for the chart terminal UI.
 """
 
+import asyncio
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -22,6 +24,11 @@ from solat_engine.catalog.symbols import resolve_storage_symbol
 from solat_engine.data.models import SupportedTimeframe
 from solat_engine.data.parquet_store import ParquetStore
 from solat_engine.logging import get_logger
+from solat_engine.strategies.elite8_hardened import (
+    BarData,
+    Elite8StrategyFactory,
+    StrategyContext,
+)
 from solat_engine.strategies.indicators import (
     atr,
     bollinger_bands,
@@ -99,6 +106,10 @@ class SignalMarker(BaseModel):
     label: str | None = None
     strategy: str | None = None
     trade_id: str | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+    confidence: float = 1.0
 
 
 class SignalsRequest(BaseModel):
@@ -113,7 +124,16 @@ class SignalsRequest(BaseModel):
         default=None, description="End time (UTC)"
     )
     strategy: str | None = Field(
-        default=None, description="Filter by strategy name"
+        default=None, description="Filter by strategy name (single)"
+    )
+    strategies: list[str] | None = Field(
+        default=None, description="List of strategy names to compute signals for"
+    )
+    limit: int = Field(
+        default=1000,
+        description="Max bars to load for signal computation",
+        ge=50,
+        le=5000,
     )
 
 
@@ -304,6 +324,71 @@ def compute_indicator(
 
 
 # =============================================================================
+# Strategy Signal Computation
+# =============================================================================
+
+
+def _bars_to_bar_data(bars: list[Any]) -> list[BarData]:
+    """Convert HistoricalBar list to BarData list for strategy consumption."""
+    return [
+        BarData(
+            timestamp=b.timestamp_utc,
+            open=float(b.open),
+            high=float(b.high),
+            low=float(b.low),
+            close=float(b.close),
+            volume=float(b.volume),
+        )
+        for b in bars
+    ]
+
+
+def _compute_strategy_signals(
+    bot_name: str,
+    bar_data: Sequence[BarData],
+    symbol: str,
+    timeframe: str,
+) -> list[SignalMarker]:
+    """
+    Run a strategy over historical bars and collect entry signals.
+
+    This is CPU-bound work — call from an executor.
+    """
+    strategy = Elite8StrategyFactory.create(bot_name)
+    markers: list[SignalMarker] = []
+
+    for i in range(strategy.warmup_bars, len(bar_data)):
+        context = StrategyContext(
+            symbol=symbol,
+            timeframe=timeframe,
+            bar_index=i,
+            bot_name=bot_name,
+        )
+        signal = strategy.generate_signal(bar_data[: i + 1], None, context)
+
+        if signal.is_entry:
+            bar = bar_data[i]
+            signal_type = "entry_long" if signal.is_buy else "entry_short"
+            markers.append(
+                SignalMarker(
+                    timestamp=bar.timestamp.isoformat()
+                    if hasattr(bar.timestamp, "isoformat")
+                    else str(bar.timestamp),
+                    type=signal_type,
+                    price=bar.close,
+                    label=f"{signal.direction} {bot_name}",
+                    strategy=bot_name,
+                    stop_loss=signal.stop_loss,
+                    take_profit=signal.take_profit,
+                    reason_codes=signal.reason_codes,
+                    confidence=signal.confidence,
+                )
+            )
+
+    return markers
+
+
+# =============================================================================
 # Routes
 # =============================================================================
 
@@ -349,7 +434,7 @@ async def compute_overlays(
     cached = cache.get(*cache_key_args)
     if cached is not None:
         logger.debug("Overlay cache hit for %s", request.symbol)
-        return cached
+        return cast(OverlayResponse, cached)
     # Parse timeframe
     try:
         tf = SupportedTimeframe(request.timeframe)
@@ -485,29 +570,102 @@ async def get_signals(
     client_id = rate_limiter.get_client_id(http_request)
     rate_limiter.check(client_id)
 
-    # Check cache first
+    # Resolve strategy list
+    bot_names: list[str] = []
+    if request.strategies:
+        bot_names = request.strategies
+    elif request.strategy:
+        bot_names = [request.strategy]
+
+    # Validate bot names
+    available = Elite8StrategyFactory.list_bots()
+    invalid = [b for b in bot_names if b not in available]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown strategies: {invalid}. Available: {available}",
+        )
+
+    # If no strategies requested, return empty (backward compat)
+    if not bot_names:
+        return SignalsResponse(symbol=request.symbol, markers=[], count=0)
+
+    # Check cache (include strategies in key)
     cache = get_signals_cache()
     cache_key_args = (
         request.symbol,
         request.timeframe,
         request.start.isoformat() if request.start else None,
         request.end.isoformat() if request.end else None,
-        request.strategy,
+        tuple(sorted(bot_names)),
     )
     cached = cache.get(*cache_key_args)
     if cached is not None:
         logger.debug("Signals cache hit for %s", request.symbol)
-        return cached
+        return cast(SignalsResponse, cached)
 
-    # TODO: Integrate with execution history and backtest results
-    # For now, return empty list - markers come from execution events
+    # Load bars from store
+    store = get_chart_store()
+    try:
+        tf = SupportedTimeframe(request.timeframe)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid timeframe: {request.timeframe}",
+        )
+
+    storage_symbol = resolve_storage_symbol(request.symbol)
+    bars = store.read_bars(
+        symbol=storage_symbol,
+        timeframe=tf,
+        start=request.start,
+        end=request.end,
+        limit=request.limit,
+    )
+    if not bars and storage_symbol != request.symbol:
+        bars = store.read_bars(
+            symbol=request.symbol,
+            timeframe=tf,
+            start=request.start,
+            end=request.end,
+            limit=request.limit,
+        )
+
+    if not bars:
+        return SignalsResponse(symbol=request.symbol, markers=[], count=0)
+
+    # Convert to BarData for strategies
+    bar_data = _bars_to_bar_data(bars)
+
+    # Run each strategy in executor (CPU-bound)
+    loop = asyncio.get_running_loop()
+    all_markers: list[SignalMarker] = []
+
+    tasks = [
+        loop.run_in_executor(
+            None,
+            _compute_strategy_signals,
+            bot_name,
+            bar_data,
+            request.symbol,
+            request.timeframe,
+        )
+        for bot_name in bot_names
+    ]
+    results = await asyncio.gather(*tasks)
+    for strategy_markers in results:
+        all_markers.extend(strategy_markers)
+
+    # Sort by timestamp
+    all_markers.sort(key=lambda m: m.timestamp)
+
     response = SignalsResponse(
         symbol=request.symbol,
-        markers=[],
-        count=0,
+        markers=all_markers,
+        count=len(all_markers),
     )
 
-    # Cache the response
+    # Cache with 30s TTL (signal computation is expensive)
     cache.set(response, *cache_key_args)
 
     return response
@@ -519,20 +677,33 @@ async def get_signals_simple(
     symbol: str,
     timeframe: str = Query(default="1m"),
     strategy: str | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
+    strategies: str | None = Query(default=None, description="Comma-separated strategy names"),
+    limit: int = Query(default=1000, ge=50, le=5000),
 ) -> SignalsResponse:
     """
     GET version of signals query.
 
-    Rate limited: 4 requests/sec, cached for 10s.
+    Rate limited: 4 requests/sec, cached for 30s.
     """
+    strategy_list: list[str] | None = None
+    if strategies:
+        strategy_list = [s.strip() for s in strategies.split(",") if s.strip()]
+
     request = SignalsRequest(
         symbol=symbol,
         timeframe=timeframe,
         strategy=strategy,
+        strategies=strategy_list,
+        limit=limit,
     )
 
     return await get_signals(request, http_request)
+
+
+@router.get("/available-strategies")
+async def list_available_strategies() -> dict[str, Any]:
+    """List all available strategies for signal computation."""
+    return {"strategies": Elite8StrategyFactory.get_bot_info()}
 
 
 @router.get("/available-indicators")

@@ -7,6 +7,7 @@ Defines the contract for broker connectivity implementations.
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from decimal import Decimal
+from typing import Any
 
 from solat_engine.domain import (
     Fill,
@@ -54,7 +55,7 @@ class BrokerAdapter(ABC):
     # =========================================================================
 
     @abstractmethod
-    async def get_account_info(self) -> dict:
+    async def get_account_info(self) -> dict[str, Any]:
         """
         Get account information.
 
@@ -243,7 +244,7 @@ class BrokerAdapter(ABC):
     # =========================================================================
 
     @abstractmethod
-    async def get_quote(self, symbol: str) -> dict:
+    async def get_quote(self, symbol: str) -> dict[str, Any]:
         """
         Get current quote for a symbol.
 
@@ -258,7 +259,7 @@ class BrokerAdapter(ABC):
     @abstractmethod
     async def subscribe_quotes(
         self, symbols: list[str]
-    ) -> AsyncIterator[dict]:
+    ) -> AsyncIterator[dict[str, Any]]:
         """
         Subscribe to real-time quotes.
 

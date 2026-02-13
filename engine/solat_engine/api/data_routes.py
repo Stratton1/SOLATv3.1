@@ -331,7 +331,7 @@ async def data_availability(
 @router.get("/availability/detail")
 async def data_availability_detail(
     store: ParquetStore = Depends(get_parquet_store),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Get detailed data availability per symbol per timeframe.
 
@@ -623,7 +623,7 @@ async def artefacts_index(
 TARGET_DERIVE_TIMEFRAMES = ["15m", "30m", "1h", "4h"]
 
 # Module-level state for derive jobs
-_derive_jobs: dict[str, asyncio.Task] = {}
+_derive_jobs: dict[str, asyncio.Task[Any]] = {}
 _derive_results: dict[str, dict[str, Any]] = {}
 
 

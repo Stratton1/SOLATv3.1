@@ -105,7 +105,7 @@ class SchedulerService:
         self.proposals_dir = self.data_dir / "proposals"
         self.proposals_dir.mkdir(parents=True, exist_ok=True)
 
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[Any] | None = None
         self._running = False
 
         # Job definitions

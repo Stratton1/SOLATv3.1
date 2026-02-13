@@ -91,7 +91,10 @@ async def bootstrap_catalogue(
     """
     # First, bootstrap from seed
     seed_items = get_seed_instruments()
-    bootstrap_result = store.bootstrap(seed_items)
+    bootstrap_result = store.bootstrap(
+        seed_items,
+        is_live=settings.is_live,
+    )
 
     created = bootstrap_result["created"]
     enriched = 0
@@ -113,23 +116,26 @@ async def bootstrap_catalogue(
 
             for item in unenriched:
                 try:
-                    # Search for the instrument
-                    search_query = item.search_hint or item.display_name
-                    markets = await client.search_markets(search_query, max_results=5)
+                    epic = item.epic
 
-                    if not markets:
-                        item.enrichment_error = f"No markets found for '{search_query}'"
-                        item.updated_at = datetime.utcnow()
-                        store.upsert(item)
-                        failed_enrichment += 1
-                        warnings.append(f"{item.symbol}: No markets found")
-                        continue
+                    # If no epic from seed, search for it
+                    if not epic:
+                        search_query = item.search_hint or item.display_name
+                        markets = await client.search_markets(search_query, max_results=5)
 
-                    # Pick best match (first result for now)
-                    best_match = markets[0]
-                    epic = best_match.epic
+                        if not markets:
+                            item.enrichment_error = f"No markets found for '{search_query}'"
+                            item.updated_at = datetime.utcnow()
+                            store.upsert(item)
+                            failed_enrichment += 1
+                            warnings.append(f"{item.symbol}: No markets found")
+                            continue
 
-                    # Get detailed market info
+                        # Pick best match (first result for now)
+                        best_match = markets[0]
+                        epic = best_match.epic
+
+                    # Get detailed market info using epic
                     details = await client.get_market_details(epic)
 
                     if details:

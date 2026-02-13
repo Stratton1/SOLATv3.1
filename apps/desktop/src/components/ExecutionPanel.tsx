@@ -3,6 +3,7 @@ import { useExecutionStatus } from "../hooks/useExecutionStatus";
 import { useExecutionMode } from "../hooks/useExecutionMode";
 import { useToast } from "../context/ToastContext";
 import { InfoTip } from "./InfoTip";
+import { formatPnl } from "../lib/format";
 
 interface ExecutionPanelProps {
   igConfigured: boolean;
@@ -115,7 +116,7 @@ export function ExecutionPanel({ igConfigured }: ExecutionPanelProps) {
         </div>
         <div className="autopilot-metric">
           <span className={`autopilot-metric-value num tabular-nums ${status.realized_pnl_today >= 0 ? "text-green" : "text-red"}`} style={{ fontSize: 16 }}>
-            {status.realized_pnl_today.toFixed(2)}
+            {formatPnl(status.realized_pnl_today)}
           </span>
           <span className="autopilot-metric-label">PnL Today</span>
         </div>

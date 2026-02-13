@@ -9,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 
 class Timeframe(str, Enum):
@@ -115,7 +115,7 @@ class Bar(BaseModel):
 
     @field_validator("high")
     @classmethod
-    def high_gte_open_close(cls, v: Decimal, info) -> Decimal:
+    def high_gte_open_close(cls, v: Decimal, info: ValidationInfo) -> Decimal:
         """Validate high >= open and close."""
         data = info.data
         if "open" in data and v < data["open"]:
@@ -126,7 +126,7 @@ class Bar(BaseModel):
 
     @field_validator("low")
     @classmethod
-    def low_lte_open_close(cls, v: Decimal, info) -> Decimal:
+    def low_lte_open_close(cls, v: Decimal, info: ValidationInfo) -> Decimal:
         """Validate low <= open and close."""
         data = info.data
         if "open" in data and v > data["open"]:

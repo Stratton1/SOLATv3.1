@@ -152,6 +152,7 @@ class CatalogueStore:
     def bootstrap(
         self,
         seed_items: list[CatalogueSeedItem],
+        is_live: bool = False,
     ) -> dict[str, Any]:
         """
         Bootstrap catalogue from seed items.
@@ -160,6 +161,7 @@ class CatalogueStore:
 
         Args:
             seed_items: List of seed items
+            is_live: Whether to use LIVE epics from seed (default False/DEMO)
 
         Returns:
             Summary of bootstrap operation
@@ -175,10 +177,13 @@ class CatalogueStore:
                 skipped += 1
                 continue
 
+            # Pick epic based on mode
+            epic = seed.live_epic if is_live else seed.demo_epic
+
             # Create new catalogue item from seed
             item = InstrumentCatalogueItem(
                 symbol=seed.symbol,
-                epic=None,  # Will be filled by enrichment
+                epic=epic,
                 display_name=seed.display_name,
                 asset_class=seed.asset_class,
                 currency=seed.currency,

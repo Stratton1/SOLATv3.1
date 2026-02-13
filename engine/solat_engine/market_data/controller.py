@@ -362,10 +362,9 @@ class MarketDataController:
         from solat_engine.market_data.polling import PollingMarketSource
 
         self._polling_source = PollingMarketSource(
-            ig_client=self._ig_client,
-            cadence_ms=self._config.poll_cadence_ms,
+            client=self._ig_client,
+            poll_interval_ms=self._config.poll_cadence_ms,
             on_quote=self._handle_quote,
-            on_status_change=self._handle_status_change,
         )
 
         # Add existing subscriptions

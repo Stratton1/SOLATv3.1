@@ -26,7 +26,10 @@ def run_single_backtest(
     timeframe: str = "1h",
     start_date: str = "2023-01-01",
     end_date: str = "2025-12-31",
-    initial_cash: float = 100000.0,
+    initial_cash: float = 10000.0,
+    fixed_size: float | None = None,
+    risk_per_trade_pct: float = 2.0,
+    max_positions: int = 3,
 ) -> dict:
     """Run a single bot backtest."""
     # Use absolute paths from script location
@@ -42,6 +45,15 @@ def run_single_backtest(
     start_dt = datetime.fromisoformat(start_date).replace(tzinfo=UTC)
     end_dt = datetime.fromisoformat(end_date).replace(tzinfo=UTC)
 
+    from solat_engine.backtest.models import SizingMethod
+
+    risk = RiskConfig(
+        sizing_method=SizingMethod.FIXED_SIZE if fixed_size else SizingMethod.RISK_PER_TRADE,
+        fixed_size=fixed_size or 1.0,
+        risk_per_trade_pct=risk_per_trade_pct,
+        max_open_positions=max_positions
+    )
+
     request = BacktestRequest(
         bots=[bot],
         symbols=symbols,
@@ -49,7 +61,7 @@ def run_single_backtest(
         start=start_dt,
         end=end_dt,
         initial_cash=initial_cash,
-        risk=RiskConfig(position_size_pct=2.0, max_positions=3),
+        risk=risk,
     )
 
     result = engine.run(request)
@@ -134,6 +146,10 @@ def main():
     parser.add_argument("--timeframe", default="1h", help="Timeframe")
     parser.add_argument("--start", default="2023-01-01", help="Start date")
     parser.add_argument("--end", default="2025-12-31", help="End date")
+    parser.add_argument("--initial-cash", type=float, default=10000.0, help="Initial cash")
+    parser.add_argument("--fixed-size", type=float, help="Fixed lot size (overrides percentage sizing)")
+    parser.add_argument("--risk-pct", type=float, default=2.0, help="Risk percentage per trade")
+    parser.add_argument("--max-pos", type=int, default=3, help="Max concurrent positions")
     parser.add_argument("--sweep", action="store_true", help="Run all 8 bots")
     args = parser.parse_args()
 
@@ -172,6 +188,10 @@ def main():
             timeframe=args.timeframe,
             start_date=args.start,
             end_date=args.end,
+            initial_cash=args.initial_cash,
+            fixed_size=args.fixed_size,
+            risk_per_trade_pct=args.risk_pct,
+            max_positions=args.max_pos,
         )
 
         print(f"\nBot: {result['bot']}")

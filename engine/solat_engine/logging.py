@@ -10,6 +10,7 @@ Provides consistent logging format across all modules with:
 
 import logging
 import sys
+from collections import deque
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
@@ -78,6 +79,32 @@ class SOLATFormatter(logging.Formatter):
         return super().format(record)
 
 
+class InMemoryHandler(logging.Handler):
+    """In-memory log handler for UI diagnostics."""
+
+    def __init__(self, capacity: int = 1000):
+        super().__init__()
+        self.logs: deque[dict[str, Any]] = deque(maxlen=capacity)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            # We don't use the formatter here to keep raw message + extra
+            log_entry = {
+                "timestamp": getattr(record, "timestamp", datetime.now(UTC).isoformat()),
+                "level": record.levelname,
+                "level_no": record.levelno,
+                "logger": record.name,
+                "message": record.getMessage(),
+                "extra": redact_sensitive(getattr(record, "args", {}) if isinstance(record.args, dict) else {}),
+            }
+            self.logs.append(log_entry)
+        except Exception:
+            self.handleError(record)
+
+
+_in_memory_handler = InMemoryHandler()
+
+
 def setup_logging(level: str = "INFO", json_output: bool = False) -> logging.Logger:
     """
     Configure logging for the SOLAT engine.
@@ -97,7 +124,7 @@ def setup_logging(level: str = "INFO", json_output: bool = False) -> logging.Log
     numeric_level = getattr(logging, level.upper(), logging.INFO)
     root.setLevel(numeric_level)
 
-    # Create handler
+    # Create stream handler
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(numeric_level)
 
@@ -115,6 +142,11 @@ def setup_logging(level: str = "INFO", json_output: bool = False) -> logging.Log
     formatter = SOLATFormatter(fmt)
     handler.setFormatter(formatter)
     root.addHandler(handler)
+
+    # Add in-memory handler
+    _in_memory_handler.setLevel(numeric_level)
+    _in_memory_handler.setFormatter(formatter)
+    root.addHandler(_in_memory_handler)
 
     # Suppress noisy third-party loggers
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
@@ -135,6 +167,13 @@ def get_logger(name: str) -> logging.Logger:
         Logger instance
     """
     return logging.getLogger(name)
+
+
+def get_in_memory_logs(level: str = "INFO", limit: int = 50) -> list[dict[str, Any]]:
+    """Get filtered logs from memory."""
+    numeric_level = getattr(logging, level.upper(), logging.INFO)
+    filtered = [log for log in _in_memory_handler.logs if log["level_no"] >= numeric_level]
+    return filtered[-limit:]
 
 
 def set_run_id(run_id: str) -> None:

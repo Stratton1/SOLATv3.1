@@ -33,7 +33,7 @@ interface RunResults {
 }
 
 // Colors for differentiating runs in comparison
-const RUN_COLORS = ["#2563eb", "#16a34a", "#d97706", "#7c3aed", "#dc2626"];
+const RUN_COLORS = ["#3d8bfd", "#00d68f", "#f7b955", "#a78bfa", "#f45b69"];
 
 // Metrics to display in comparison table
 const COMPARISON_METRICS: Array<{

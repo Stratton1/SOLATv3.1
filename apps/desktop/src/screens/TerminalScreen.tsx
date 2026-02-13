@@ -1,37 +1,20 @@
 /**
- * Terminal screen with multi-chart workspace.
+ * Charts screen with multi-chart workspace.
  *
- * Provides:
- * - WorkspaceShell with layout management
- * - Multi-chart panels with independent symbol/timeframe
- * - Strategy drawer for bot configuration
+ * Wraps everything in WorkspaceProvider so all panels share a single
+ * workspace state instance (fixing the independent-useState bug).
  */
 
-import { useState, useCallback } from "react";
+import { WorkspaceProvider } from "../context/WorkspaceContext";
 import { WorkspaceShell } from "../components/workspace/WorkspaceShell";
-import { StrategyDrawer } from "../components/strategy/StrategyDrawer";
 
 export function TerminalScreen() {
-  const [showStrategy, setShowStrategy] = useState(false);
-
-  const handleOpenStrategy = useCallback(() => {
-    setShowStrategy(true);
-  }, []);
-
-  const handleCloseStrategy = useCallback(() => {
-    setShowStrategy(false);
-  }, []);
-
   return (
-    <div className="terminal-screen-v2">
-      <WorkspaceShell onOpenStrategy={handleOpenStrategy} />
-
-      {showStrategy && (
-        <StrategyDrawer onClose={handleCloseStrategy} />
-      )}
-
-      {/* Demo Mode Badge */}
-      <div className="demo-badge">DEMO</div>
-    </div>
+    <WorkspaceProvider>
+      <div className="terminal-screen-v2">
+        <WorkspaceShell />
+        <div className="demo-badge">DEMO</div>
+      </div>
+    </WorkspaceProvider>
   );
 }

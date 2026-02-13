@@ -8,6 +8,7 @@ Tracks full lifecycle from creation to fill/cancel.
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -157,7 +158,7 @@ class Order(BaseModel):
         default=None,
         description="Reason for rejection (if rejected)",
     )
-    metadata: dict = Field(
+    metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional order metadata",
     )

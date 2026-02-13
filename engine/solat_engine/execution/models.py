@@ -411,10 +411,9 @@ class OrderRegistry:
                     stale_refs.append(ref)
 
         for ref in stale_refs:
-            tracker = self._orders.pop(ref, None)
-            if tracker:
-                self._intent_map.pop(tracker.intent_id, None)
-                if tracker.deal_id:
-                    self._deal_id_map.pop(tracker.deal_id, None)
+            tracker = self._orders.pop(ref)
+            self._intent_map.pop(tracker.intent_id, None)
+            if tracker.deal_id:
+                self._deal_id_map.pop(tracker.deal_id, None)
 
         return len(stale_refs)

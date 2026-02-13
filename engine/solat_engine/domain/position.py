@@ -6,6 +6,7 @@ Represents a current holding in an instrument.
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -97,7 +98,7 @@ class Position(BaseModel):
         default=None,
         description="Strategy that opened this position",
     )
-    metadata: dict = Field(
+    metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional position metadata",
     )

@@ -6,10 +6,13 @@ Provides REST API and WebSocket endpoints for the desktop terminal.
 """
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
 
+import psutil
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -31,6 +34,7 @@ from solat_engine.config import Settings, get_settings, get_settings_dep
 from solat_engine.logging import get_logger, setup_logging
 from solat_engine.runtime.event_bus import Event, EventType, get_event_bus
 from solat_engine.runtime.ws_throttle import ExecutionEventCompressor
+from solat_engine.scheduler.service import SchedulerService
 
 # Setup logging
 setup_logging(level=get_settings().log_level)
@@ -42,6 +46,15 @@ logger = get_logger(__name__)
 # =============================================================================
 
 
+class SystemMetrics(BaseModel):
+    """System resource utilization."""
+
+    cpu_pct: float
+    memory_usage_mb: float
+    disk_free_gb: float
+    process_id: int
+
+
 class HealthResponse(BaseModel):
     """Health check response."""
 
@@ -49,6 +62,7 @@ class HealthResponse(BaseModel):
     version: str
     time: str
     uptime_seconds: float
+    system: SystemMetrics | None = None
 
 
 class LiveHealthResponse(BaseModel):
@@ -95,7 +109,8 @@ class AppState:
         self.start_time: datetime = datetime.now(UTC)
         self.heartbeat_count: int = 0
         self.websocket_clients: list[WebSocket] = []
-        self.heartbeat_task: asyncio.Task | None = None
+        self.heartbeat_task: asyncio.Task[Any] | None = None
+        self.scheduler: SchedulerService | None = None
         # Execution event compressor to reduce WS noise
         self.execution_compressor = ExecutionEventCompressor(dedup_window_s=2.0)
 
@@ -143,7 +158,7 @@ async def heartbeat_loop() -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan handler."""
     settings = get_settings()
     # Startup
@@ -372,7 +387,7 @@ async def lifespan(app: FastAPI):
     set_autopilot_service(None)
 
     # Stop scheduler
-    if hasattr(state, "scheduler") and state.scheduler:
+    if state.scheduler:
         await state.scheduler.stop()
 
     # Cancel heartbeat task
@@ -439,20 +454,35 @@ app.include_router(autopilot_router)
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health() -> HealthResponse:
+async def health(settings: Settings = Depends(get_settings_dep)) -> HealthResponse:
     """
     Health check endpoint.
 
-    Returns current status, version, and uptime.
+    Returns current status, version, uptime, and system metrics.
     """
     now = datetime.now(UTC)
     uptime = (now - state.start_time).total_seconds()
+
+    # Gather system metrics
+    process = psutil.Process(os.getpid())
+    cpu_pct = process.cpu_percent(interval=None)
+    memory_usage_mb = process.memory_info().rss / (1024 * 1024)
+    disk_usage = psutil.disk_usage(str(settings.data_dir))
+    disk_free_gb = disk_usage.free / (1024 * 1024 * 1024)
+
+    system = SystemMetrics(
+        cpu_pct=round(cpu_pct, 2),
+        memory_usage_mb=round(memory_usage_mb, 2),
+        disk_free_gb=round(disk_free_gb, 2),
+        process_id=os.getpid(),
+    )
 
     return HealthResponse(
         status="healthy",
         version=__version__,
         time=now.isoformat(),
         uptime_seconds=round(uptime, 2),
+        system=system,
     )
 
 
@@ -519,11 +549,11 @@ async def health_live() -> LiveHealthResponse:
     if _market_service is not None and hasattr(_market_service, "get_status"):
         md_status = _market_service.get_status()
         checks["market_data"] = {
-            "mode": md_status.get("mode", "unknown"),
-            "subscriptions": md_status.get("subscription_count", 0),
-            "stale": md_status.get("is_stale", False),
+            "mode": md_status.mode.value,
+            "subscriptions": len(md_status.subscriptions),
+            "stale": md_status.stale,
         }
-        if md_status.get("is_stale"):
+        if md_status.stale:
             issues.append("market_data_stale")
     else:
         checks["market_data"] = {"mode": "inactive", "subscriptions": 0}

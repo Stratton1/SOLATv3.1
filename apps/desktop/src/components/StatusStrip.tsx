@@ -31,10 +31,6 @@ const SCREEN_HOTKEYS: Record<string, Array<{ key: string; label: string }>> = {
     { key: "\u2318K", label: "Palette" },
     { key: "\u23182", label: "Terminal" },
   ],
-  "/settings": [
-    { key: "\u2318K", label: "Palette" },
-    { key: "\u23181", label: "Status" },
-  ],
 };
 
 export function StatusStrip({

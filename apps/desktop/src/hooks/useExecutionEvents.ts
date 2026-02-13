@@ -64,7 +64,7 @@ export function useExecutionEvents({
         const mapped: Execution[] = fillsRes.fills.map((fill: ExecutionFill) => ({
           ts: fill.ts,
           type: fill.is_close ? "EXIT" as const : "ENTRY" as const,
-          direction: fill.direction,
+          direction: (fill.side ?? fill.direction ?? "BUY"),
           price: fill.price,
           size: fill.size,
           bot: fill.bot,
@@ -78,18 +78,20 @@ export function useExecutionEvents({
         positionsRes.positions
           .filter((p: OpenPosition) => p.symbol === symbol)
           .forEach((pos: OpenPosition) => {
-            if (pos.sl_price) {
+            const slPrice = pos.sl_price ?? pos.stop_level;
+            const tpPrice = pos.tp_price ?? pos.limit_level;
+            if (slPrice) {
               levels.push({
                 type: "SL",
-                price: pos.sl_price,
+                price: slPrice,
                 direction: pos.direction,
                 symbol: pos.symbol,
               });
             }
-            if (pos.tp_price) {
+            if (tpPrice) {
               levels.push({
                 type: "TP",
-                price: pos.tp_price,
+                price: tpPrice,
                 direction: pos.direction,
                 symbol: pos.symbol,
               });

@@ -43,6 +43,19 @@ class RiskEngine:
         self._daily_pnl_start: float = 0.0
         self._daily_pnl_reset_date: datetime | None = None
         self._dealing_rules: dict[str, dict[str, float]] = {}
+        self._symbol_metadata: dict[str, dict[str, float]] = {}
+
+    def set_symbol_metadata(
+        self,
+        symbol: str,
+        lot_size: float = 1.0,
+        margin_factor: float = 100.0,
+    ) -> None:
+        """Set metadata for exposure calculation."""
+        self._symbol_metadata[symbol] = {
+            "lot_size": lot_size,
+            "margin_factor": margin_factor,
+        }
 
     def set_dealing_rules(
         self,
@@ -158,13 +171,18 @@ class RiskEngine:
             )
 
         # 8. Check per-symbol exposure
+        meta = self._symbol_metadata.get(intent.symbol, {"lot_size": 1.0})
+        lot_size = meta["lot_size"]
+
         symbol_exposure = sum(
-            pos.size * pos.open_level
+            pos.size * pos.open_level * lot_size
             for pos in current_positions
             if pos.symbol == intent.symbol or pos.epic == intent.epic
         )
-        # Add proposed exposure (approximate with size * 1.0 if no price)
-        proposed_exposure = adjusted_size * 1.0  # Simplified; would need current price
+        
+        # Add proposed exposure (approximate with 1.0 price if no mid provided)
+        # In a real run, the router would provide the current mid price.
+        proposed_exposure = adjusted_size * 1.0 * lot_size
         if symbol_exposure + proposed_exposure > self._config.per_symbol_exposure_cap:
             return RiskCheckResult(
                 allowed=False,

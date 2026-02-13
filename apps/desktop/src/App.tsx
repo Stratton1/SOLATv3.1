@@ -2,12 +2,12 @@ import { useState } from "react";
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
 import { StatusScreen } from "./components/StatusScreen";
 import { SplashScreen } from "./components/SplashScreen";
+import { DashboardScreen } from "./screens/DashboardScreen";
 import { TerminalScreen } from "./screens/TerminalScreen";
 import { BacktestsScreen } from "./screens/BacktestsScreen";
 import { OptimizationScreen } from "./screens/OptimizationScreen";
 import { BlotterScreen } from "./screens/BlotterScreen";
-import { LibraryScreen } from "./screens/LibraryScreen";
-import { SettingsScreen } from "./screens/SettingsScreen";
+
 import { OfflineBanner } from "./components/OfflineBanner";
 import { RouteErrorBoundary } from "./components/ErrorBoundary";
 import { StatusStrip } from "./components/StatusStrip";
@@ -17,6 +17,7 @@ import { useEngineHealth } from "./hooks/useEngineHealth";
 import { useEngineLauncher } from "./hooks/useEngineLauncher";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { useHotkeys } from "./hooks/useHotkeys";
+import { GuideDrawer } from "./components/GuideDrawer";
 
 function AppContent() {
   const location = useLocation();
@@ -34,11 +35,12 @@ function AppContent() {
   const { heartbeatCount, isConnected, connectionStatus } = useWebSocket();
   const { startEngine, isStarting: isStartingEngine } = useEngineLauncher();
 
-  // Command palette state
+  // Command palette + guide state
   const [showPalette, setShowPalette] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
-  // Global hotkeys
-  const NAV_ROUTES = ["/", "/terminal", "/backtests", "/optimise", "/library", "/blotter", "/settings"];
+  // Global hotkeys — 6 tabs: Dashboard, Charts, Backtests, Optimise, Blotter, System
+  const NAV_ROUTES = ["/", "/terminal", "/backtests", "/optimise", "/blotter", "/system"];
   useHotkeys({
     "Meta+k": () => setShowPalette(true),
     "Meta+1": () => navigate(NAV_ROUTES[0]),
@@ -47,7 +49,6 @@ function AppContent() {
     "Meta+4": () => navigate(NAV_ROUTES[3]),
     "Meta+5": () => navigate(NAV_ROUTES[4]),
     "Meta+6": () => navigate(NAV_ROUTES[5]),
-    "Meta+7": () => navigate(NAV_ROUTES[6]),
     "Escape": () => setShowPalette(false),
   });
 
@@ -68,13 +69,13 @@ function AppContent() {
             to="/"
             className={`nav-link ${location.pathname === "/" ? "active" : ""}`}
           >
-            Status
+            Dashboard
           </Link>
           <Link
             to="/terminal"
             className={`nav-link ${location.pathname === "/terminal" ? "active" : ""}`}
           >
-            Terminal
+            Charts
           </Link>
           <Link
             to="/backtests"
@@ -89,22 +90,16 @@ function AppContent() {
             Optimise
           </Link>
           <Link
-            to="/library"
-            className={`nav-link ${location.pathname === "/library" ? "active" : ""}`}
-          >
-            Library
-          </Link>
-          <Link
             to="/blotter"
             className={`nav-link ${location.pathname === "/blotter" ? "active" : ""}`}
           >
             Blotter
           </Link>
           <Link
-            to="/settings"
-            className={`nav-link ${location.pathname === "/settings" ? "active" : ""}`}
+            to="/system"
+            className={`nav-link ${location.pathname === "/system" ? "active" : ""}`}
           >
-            Settings
+            System
           </Link>
         </nav>
 
@@ -115,6 +110,13 @@ function AppContent() {
             }`}
           />
           <span className="status-text">{connectionStatus}</span>
+          <button
+            className="guide-trigger"
+            onClick={() => setShowGuide(true)}
+            title="Platform Guide"
+          >
+            ?
+          </button>
         </div>
       </header>
 
@@ -133,8 +135,13 @@ function AppContent() {
 
       <main className={`app-main ${isTerminal ? "terminal-main-container" : ""}`}>
         <Routes>
+          <Route path="/" element={<RouteErrorBoundary><DashboardScreen /></RouteErrorBoundary>} />
+          <Route path="/terminal" element={<RouteErrorBoundary><TerminalScreen /></RouteErrorBoundary>} />
+          <Route path="/backtests" element={<RouteErrorBoundary><BacktestsScreen /></RouteErrorBoundary>} />
+          <Route path="/optimise" element={<RouteErrorBoundary><OptimizationScreen /></RouteErrorBoundary>} />
+          <Route path="/blotter" element={<RouteErrorBoundary><BlotterScreen /></RouteErrorBoundary>} />
           <Route
-            path="/"
+            path="/system"
             element={
               <RouteErrorBoundary>
                 <StatusScreen
@@ -150,12 +157,6 @@ function AppContent() {
               </RouteErrorBoundary>
             }
           />
-          <Route path="/terminal" element={<RouteErrorBoundary><TerminalScreen /></RouteErrorBoundary>} />
-          <Route path="/backtests" element={<RouteErrorBoundary><BacktestsScreen /></RouteErrorBoundary>} />
-          <Route path="/optimise" element={<RouteErrorBoundary><OptimizationScreen /></RouteErrorBoundary>} />
-          <Route path="/library" element={<RouteErrorBoundary><LibraryScreen /></RouteErrorBoundary>} />
-          <Route path="/blotter" element={<RouteErrorBoundary><BlotterScreen /></RouteErrorBoundary>} />
-          <Route path="/settings" element={<RouteErrorBoundary><SettingsScreen /></RouteErrorBoundary>} />
         </Routes>
       </main>
 
@@ -178,6 +179,9 @@ function AppContent() {
           }}
         />
       )}
+
+      {/* Platform Guide */}
+      <GuideDrawer isOpen={showGuide} onClose={() => setShowGuide(false)} />
     </div>
   );
 }

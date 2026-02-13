@@ -210,7 +210,10 @@ class AutopilotService:
         entries = self._allowlist_mgr.get_enabled()
 
         for entry in entries:
-            key = f"{entry.symbol}:{entry.bot}:{entry.timeframe}"
+            # Key now includes variant from metadata to support multiple instances
+            variant = entry.metadata.get("variant", "Original") if entry.metadata else "Original"
+            key = f"{entry.symbol}:{entry.bot}:{entry.timeframe}:{variant}"
+            
             if key not in self._bar_buffers:
                 self._bar_buffers[key] = deque(maxlen=maxlen)
                 self._cooldowns[key] = self._config.per_combo_cooldown_bars
@@ -218,6 +221,7 @@ class AutopilotService:
                     self._strategies[key] = Elite8StrategyFactory.create(
                         entry.bot,
                         warmup_bars=self._config.warmup_bars,
+                        variant=variant # Pass variant to factory
                     )
                 except ValueError:
                     logger.warning("Unknown bot '%s', skipping combo %s", entry.bot, key)
@@ -263,9 +267,10 @@ class AutopilotService:
         # Match to all combos for this symbol+timeframe
         for key, buf in self._bar_buffers.items():
             parts = key.split(":")
-            if len(parts) != 3:
+            if len(parts) < 3:
                 continue
-            combo_symbol, combo_bot, combo_tf = parts
+            combo_symbol, combo_bot, combo_tf = parts[0], parts[1], parts[2]
+            # variant = parts[3] if len(parts) == 4 else "Original"
 
             if combo_symbol != symbol or combo_tf != timeframe:
                 continue
@@ -360,6 +365,14 @@ class AutopilotService:
             self._errors.pop(0)
         self._errors.append(msg)
         logger.warning("Autopilot: %s", msg)
+
+    def set_execution_router(self, router: ExecutionRouter | None) -> None:
+        """Connect the execution router to the autopilot service."""
+        self._execution_router = router
+        if router:
+            logger.info("Autopilot: Execution router connected")
+        else:
+            logger.warning("Autopilot: Execution router disconnected")
 
 
 # Module-level singleton

@@ -18,6 +18,23 @@ Updated for every meaningful code change (enforced via pre-commit hook and CI gu
 
 ---
 
+
+## 2026-02-14T23:57:49Z — Merge main into release branch
+
+**What changed**
+- Merged origin/main into release/v3.1.0-alpha1 with release-preferred conflict resolution
+- Retained release branch canonical docs layout and restored expected deletions
+
+**Files**
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `apps/desktop/src/hooks/useSignals.ts`
+- `apps/desktop/src/screens/LibraryScreen.tsx`
+
+**Verification**
+- Tests: `git merge --no-ff -X ours origin/main`
+- Results: merge completed; conflicts resolved
+
+---
 ## 2026-02-14T23:45:00Z — Backtest CLI Fix + Valid Sizing + Range Mode CLI
 
 **Goal**

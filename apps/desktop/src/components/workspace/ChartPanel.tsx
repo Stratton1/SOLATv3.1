@@ -180,6 +180,29 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Handle deep link from blotter/palette (sessionStorage) — run once on mount
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("solat_chart_deeplink");
+      if (!raw) return;
+      const link = JSON.parse(raw) as { symbol: string; timeframe?: string; timestamp?: string };
+      sessionStorage.removeItem("solat_chart_deeplink");
+
+      // Only handle on the first panel
+      if (_index !== 0) return;
+
+      if (link.symbol && link.symbol !== panel.symbol) {
+        handleSymbolChange(link.symbol);
+      }
+      if (link.timeframe && link.timeframe !== panel.timeframe) {
+        handleTimeframeChange(link.timeframe);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Filter symbols for search
   const filteredSymbols = useMemo(() => {
     const query = symbolSearch.toLowerCase();

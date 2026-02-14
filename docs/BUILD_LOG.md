@@ -4,6 +4,24 @@ Chronological record of major implementation prompts.
 
 ---
 
+
+## Merge main into release branch
+
+**Date**: 2026-02-14
+**Tests**: merge completed; conflicts resolved
+
+### Summary
+
+Merged origin/main into release/v3.1.0-alpha1 with release-preferred conflict resolution
+Retained release branch canonical docs layout and restored expected deletions
+
+### Files Changed
+
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `apps/desktop/src/hooks/useSignals.ts`
+- `apps/desktop/src/screens/LibraryScreen.tsx`
+
+---
 ## Backtest CLI Fix + Valid Sizing + Range Mode CLI
 
 **Date**: 2026-02-14

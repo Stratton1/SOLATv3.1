@@ -210,10 +210,8 @@ class AutopilotService:
         entries = self._allowlist_mgr.get_enabled()
 
         for entry in entries:
-            # Key now includes variant from metadata to support multiple instances
-            variant = entry.metadata.get("variant", "Original") if entry.metadata else "Original"
-            key = f"{entry.symbol}:{entry.bot}:{entry.timeframe}:{variant}"
-            
+            key = f"{entry.symbol}:{entry.bot}:{entry.timeframe}"
+
             if key not in self._bar_buffers:
                 self._bar_buffers[key] = deque(maxlen=maxlen)
                 self._cooldowns[key] = self._config.per_combo_cooldown_bars
@@ -221,7 +219,6 @@ class AutopilotService:
                     self._strategies[key] = Elite8StrategyFactory.create(
                         entry.bot,
                         warmup_bars=self._config.warmup_bars,
-                        variant=variant # Pass variant to factory
                     )
                 except ValueError:
                     logger.warning("Unknown bot '%s', skipping combo %s", entry.bot, key)
@@ -270,7 +267,6 @@ class AutopilotService:
             if len(parts) < 3:
                 continue
             combo_symbol, combo_bot, combo_tf = parts[0], parts[1], parts[2]
-            # variant = parts[3] if len(parts) == 4 else "Original"
 
             if combo_symbol != symbol or combo_tf != timeframe:
                 continue

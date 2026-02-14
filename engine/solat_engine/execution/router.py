@@ -452,7 +452,7 @@ class ExecutionRouter:
                     logger.warning("KILL SWITCH: Commencing parallel liquidation of %d positions", len(positions))
                     
                     # Define a helper for retrying a single close
-                    async def close_with_retry(pos: PositionView):
+                    async def close_with_retry(pos: PositionView) -> str | None:
                         for attempt in range(3):
                             try:
                                 await self.close_position(pos.deal_id)

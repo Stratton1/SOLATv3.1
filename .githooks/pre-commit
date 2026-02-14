@@ -16,6 +16,13 @@ if [ -z "$STAGED" ]; then
     exit 0
 fi
 
+# Enforce canonical docs layout and stale reference cleanup.
+if ! python3 scripts/check_docs_layout.py; then
+    echo ""
+    echo "Fix docs layout issues before committing."
+    exit 1
+fi
+
 # Patterns that count as "code changes"
 CODE_PATTERN="^(engine/|apps/|scripts/|\.github/|Cargo\.toml|package\.json|pnpm-lock\.yaml|pyproject\.toml|uv\.lock|requirements)"
 

@@ -25,10 +25,10 @@ All agents below are **implemented** as Cursor rules (`.cursor/rules/*.mdc`) or 
 ### 1.2 ROADMAP & Phase Agent
 - **Implemented:** `.cursor/skills/solat-roadmap-phase/SKILL.md`.
 - **Why:** Stops work that belongs in a later phase; suggests the right next steps from ROADMAP; keeps ROADMAP and code reality in sync; maintains an auditable build log.
-- **What:** Knows phases 001–009 (Foundations) through 080+ (Live); knows which phases are done in code vs doc; can suggest “update ROADMAP” or “next: Terminal UI charting”; warns if adding live-only features before hardening. **Also updates `BUILD_LOG.md` (repo root)** when phase deliverables are completed, ROADMAP is edited, or “what’s next” is answered—so there is a dated record of what was built and when. Entries are reverse chronological (newest first).
-- **How:** Rule or skill with ROADMAP summary + “current implementation state” (from last audit). When suggesting or applying ROADMAP/phase changes: (1) tick deliverables that exist in code; (2) insert a dated entry at the top of `BUILD_LOG.md` (repo root), reverse chronological (e.g. date, phase or task, what changed—ROADMAP tick, new deliverable, or “next steps” decision). Optional: when user says “log this” or “update build log”, write only the build_log entry.
+- **What:** Knows phases 001–009 (Foundations) through 080+ (Live); knows which phases are done in code vs doc; can suggest “update ROADMAP” or “next: Terminal UI charting”; warns if adding live-only features before hardening. **Also updates `docs/BUILD_LOG.md`** when phase deliverables are completed, ROADMAP is edited, or “what’s next” is answered—so there is a dated record of what was built and when. Entries are reverse chronological (newest first).
+- **How:** Rule or skill with ROADMAP summary + “current implementation state” (from last audit). When suggesting or applying ROADMAP/phase changes: (1) tick deliverables that exist in code; (2) insert a dated entry at the top of `docs/BUILD_LOG.md`, reverse chronological (e.g. date, phase or task, what changed—ROADMAP tick, new deliverable, or “next steps” decision). Optional: when user says “log this” or “update build log”, write only the build_log entry.
 - **When:** When user asks “what’s next”, “should I build X”, or when editing `docs/ROADMAP.md`. Build_log is updated whenever the agent proposes or applies ROADMAP/phase-related changes.
-- **Input:** Optional: file path or “what phase is X in”. **Output:** Phase status, next suggested tasks, ROADMAP edit suggestions, and (when applicable) a new build_log entry or the updated `BUILD_LOG.md` (root) snippet.
+- **Input:** Optional: file path or “what phase is X in”. **Output:** Phase status, next suggested tasks, ROADMAP edit suggestions, and (when applicable) a new build_log entry or the updated `docs/BUILD_LOG.md` snippet.
 
 ### 1.3 Architecture Navigator Agent
 - **Implemented:** `.cursor/skills/solat-architecture-navigator/SKILL.md`.
@@ -218,7 +218,7 @@ All agents below are **implemented** as Cursor rules (`.cursor/rules/*.mdc`) or 
 - **Implemented:** `.cursor/skills/solat-docs-update/SKILL.md`.
 - **Why:** ARCHITECTURE, ROADMAP, CONVENTIONS, SECURITY must reflect code; stale docs mislead humans and AI.
 - **What:** When code structure or behaviour changes: suggest doc updates. E.g. new route → ARCHITECTURE “REST API”; new execution path → SECURITY or ARCHITECTURE data flow; phase completed → ROADMAP tick.
-- **How:** Rule or skill: “After changing X, consider updating Y.” Optional: when saving ROADMAP.md, cross-check with engine/ and api/.
+- **How:** Rule or skill: “After changing X, consider updating Y.” Optional: when saving docs/ROADMAP.md, cross-check with engine/ and api/.
 - **When:** After significant engine or API change; or when user asks “update docs”.
 - **Input:** Summary of code change. **Output:** List of doc files and suggested edits.
 

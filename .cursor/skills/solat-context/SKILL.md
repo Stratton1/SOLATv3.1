@@ -17,8 +17,8 @@ Copy the following summary into your response so both you and the user share the
 - **Project:** SOLAT v3.1 — desktop trading terminal (Tauri + React + Python FastAPI sidecar), IG broker, Elite 8 strategies, backtest-first.
 - **Layout:** Engine = `engine/solat_engine/` (api, broker/ig, data, backtest, strategies, execution, market_data). UI = `apps/desktop/src/` (components, hooks, screens). Docs = `docs/`.
 - **Invariants:** UI never talks to IG; engine binds localhost only; no secrets in repo/logs; backtests deterministic (no lookahead); strategy logic in engine only; respect phase discipline.
-- **Canonical docs:** ARCHITECTURE.md (design, flows), ROADMAP.md (phases, next), SECURITY.md (secrets, kill switch), CONVENTIONS.md (style, artefacts). Agent list: docs/AGENTS/AGENTS-INVENTORY.md.
-- **Phase state:** Foundations through market data backend done; Terminal UI (charting, overlays, markers) in progress. "What's next?" → anchor to ROADMAP.md.
+- **Canonical docs:** docs/ARCHITECTURE.md (design, flows), docs/ROADMAP.md (phases, next), docs/SECURITY.md (secrets, kill switch), docs/CONVENTIONS.md (style, artefacts). Agent list: docs/AGENTS/AGENTS-INVENTORY.md.
+- **Phase state:** Foundations through market data backend done; Terminal UI (charting, overlays, markers) in progress. "What's next?" → anchor to docs/ROADMAP.md.
 - **Current focus:** [User's stated task or "general development".]
 ```
 

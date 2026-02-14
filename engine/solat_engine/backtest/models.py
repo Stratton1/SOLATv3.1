@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 
 
 class SizingMethod(str, Enum):
@@ -93,19 +93,30 @@ class RiskConfig(BaseModel):
     )
 
 
+class RangeMode(str, Enum):
+    """How to determine the backtest date range."""
+
+    FIXED_WINDOW = "fixed_window"
+    MAX_AVAILABLE = "max_available"
+
+
 class BacktestRequest(BaseModel):
     """Request to run a backtest."""
 
     symbols: list[str] = Field(..., min_length=1, description="Symbols to backtest")
     timeframe: str = Field(default="1m", description="Primary timeframe")
-    start: datetime = Field(
-        ...,
-        description="Backtest start time (UTC)",
+    range_mode: RangeMode = Field(
+        default=RangeMode.FIXED_WINDOW,
+        description="fixed_window requires start/end; max_available uses all data",
+    )
+    start: datetime | None = Field(
+        default=None,
+        description="Backtest start time (UTC). Required when range_mode=fixed_window.",
         validation_alias=AliasChoices("start", "start_date"),
     )
-    end: datetime = Field(
-        ...,
-        description="Backtest end time (UTC)",
+    end: datetime | None = Field(
+        default=None,
+        description="Backtest end time (UTC). Required when range_mode=fixed_window.",
         validation_alias=AliasChoices("end", "end_date"),
     )
     bots: list[str] = Field(..., min_length=1, description="Bot names to run")
@@ -124,6 +135,13 @@ class BacktestRequest(BaseModel):
         default=None,
         description="Bot name -> params dict for strategy param injection",
     )
+
+    @model_validator(mode="after")
+    def _validate_range(self) -> "BacktestRequest":
+        if self.range_mode == RangeMode.FIXED_WINDOW:
+            if self.start is None or self.end is None:
+                raise ValueError("start and end are required when range_mode=fixed_window")
+        return self
 
 
 # =============================================================================
@@ -196,6 +214,7 @@ class MetricsSummary(BaseModel):
     data_start: datetime | None = None
     data_end: datetime | None = None
     bar_count: int = 0
+    duration_days: float = 0.0
     initial_cash: float = 0.0
     commission_model: str = "flat"
     spread_model: str = "fixed"

@@ -31,7 +31,7 @@ Use one of:
 
 - **engine** — Python engine (`engine/solat_engine/`, `engine/tests/`)
 - **ui** or **desktop** — Tauri + React (`apps/desktop/`)
-- **docs** — Documentation (`docs/`, `README.md`, `BUILD_LOG.md`)
+- **docs** — Documentation (`docs/`, `README.md`, `docs/BUILD_LOG.md`)
 - **ci** — CI/config (`.github/`, root config)
 - **agents** — Cursor rules/skills (`.cursor/`, `docs/AGENTS/`)
 

@@ -8,13 +8,82 @@ Updated for every meaningful code change (enforced via pre-commit hook and CI gu
 | Item | Value |
 |------|-------|
 | **Branch** | `release/v3.1.0-alpha1` |
-| **Tests** | 819 passing, 0 failing |
-| **Phases complete** | 001-069 (foundations through terminal UI), 070 A-D+G (go-live hardening), 072 (tuning pipeline) |
+| **Tests** | 847 passing, 0 failing |
+| **Phases complete** | 001-069 (foundations through terminal UI), 070 A-D+G (go-live hardening), 072 (tuning pipeline), Platform Outputs, CLI Fix + Sizing |
 | **Phases pending** | 070-E/F/H (live trading hardening) |
 | **Grand Sweep** | 180 combos (9 bots x 10 FX x 2 TFs), 21 min, all successful |
 | **Top performer** | CloudTwist/USDJPY/4h — Sharpe 28.5, 66.7% win rate |
 | **Broken bots** | ChikouConfirmer (0 trades), ReversalHunter (0 trades on 2024 data) |
 | **Key docs** | `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`, `docs/LIVE_RUNBOOK.md`, `engine/docs/ops/TUNING_PIPELINE_V1.md` |
+
+---
+
+## 2026-02-14T23:45:00Z — Backtest CLI Fix + Valid Sizing + Range Mode CLI
+
+**Goal**
+- Fix `run_backtest.py` crash from datetime slicing (breaking change from Platform Outputs prompt)
+- Fix Symbol: None in reports
+- Eliminate mass order rejections from sizing explosion
+- Add `--range-mode max_available` to CLI
+- Run controlled smoke sweep benchmark
+
+**What changed**
+- Fixed `run_backtest.py`: added `fmt_dt()` helper for datetime/string handling
+- Added Section G (Extended) to CLI report: trades_per_day, equity_peak, missing_bar_pct
+- Fixed `Symbol: None` — engine now passes `symbol=` to `compute_metrics_summary()` for single-symbol backtests
+- Added `max_size=100.0` clamp to `calculate_position_size()` — prevents sizing explosion
+- Changed CLI default to `FIXED_SIZE` with 1.0 lots (was RISK_PER_TRADE which exploded)
+- Fixed `bars_per_day` not being passed from engine to metrics — now computed from timeframe
+- Added `--range-mode` CLI flag with `fixed_window`/`max_available` choices
+- Added `--fixed-size` default of 1.0 (was None)
+- Added 8 new tests: 4 sizing safety + 4 CLI report helpers
+- Added Project Memory + Build Log update rule to CLAUDE.md
+- Created smoke sweep benchmark script
+
+**Test results**: 847 passing, 0 failing (was 839)
+
+**Files changed**:
+- `engine/scripts/run_backtest.py` — fmt_dt(), G section, range-mode, fixed-size defaults
+- `engine/solat_engine/backtest/sizing.py` — max_size clamp in calculate_position_size()
+- `engine/solat_engine/backtest/engine.py` — symbol pass-through, bars_per_day computation
+- `engine/tests/test_platform_contracts.py` — 8 new tests (sizing safety + CLI helpers)
+- `CLAUDE.md` — project memory/build log rule added
+
+---
+
+## 2026-02-14T23:30:00Z — "Finished Platform" Outputs + Validation + Speed
+
+**Goal**
+- Document what the platform produces at every pipeline stage
+- Add contract tests ensuring scoring/WF fields stay populated
+- Add flexible `max_available` range mode for backtests
+- Speed up sweeps with ParquetStore caching
+
+**What changed**
+- Created `engine/docs/ops/PLATFORM_END_STATE.md` — documents all 8 pipeline stages
+- Created `engine/docs/ops/REQUIRED_BACKTEST_OUTPUTS.md` — authoritative field checklists
+- Added `duration_days` field to MetricsSummary, populated in `compute_metrics_summary()`
+- Fixed `missing_bar_pct` population (was always 0.0, now computed from expected vs actual bars)
+- Added `RangeMode` enum (`fixed_window`/`max_available`) + optional start/end to `BacktestRequest`
+- Added `get_available_range()` to ParquetStore (reads manifests)
+- Engine resolves max_available dates from manifests before running backtest
+- Added `GET /data/available-range` endpoint
+- Added DataFrame LRU cache (maxsize=20) to `ParquetStore._read_partition_df()`
+- Added cache invalidation on writes and partition clears
+- Created 20 contract tests in `engine/tests/test_platform_contracts.py`
+
+**Verification**
+- Tests: `cd engine && python3 -m pytest tests/ -v`
+- Results: 839 passed, 0 failed (819 existing + 20 new)
+
+**Decisions**
+- Cache uses FIFO eviction (dict insertion order) rather than LRU for simplicity
+- max_available resolves to widest range across all requested symbols
+- missing_bar_pct uses 5/7 trading day approximation for FX
+
+**Next steps**
+- Run a sweep with cache to measure speed improvement
+- Consider indicator-level caching for further sweep acceleration
 
 ---
 

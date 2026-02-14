@@ -16,6 +16,9 @@ jobs:
         with:
           fetch-depth: 2  # Need HEAD~1 for diff
 
+      - name: Check docs layout
+        run: python3 scripts/check_docs_layout.py
+
       - name: Check log updates
         run: |
           # Get changed files

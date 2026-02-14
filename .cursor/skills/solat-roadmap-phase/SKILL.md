@@ -1,11 +1,11 @@
 ---
 name: solat-roadmap-phase
-description: Reports phase status, next steps, and ROADMAP/BUILD_LOG updates. Use when the user asks what's next, should I build X, or when editing docs/ROADMAP.md. Inserts dated entries at top of BUILD_LOG.md (reverse chronological).
+description: Reports phase status, next steps, and ROADMAP/BUILD_LOG updates. Use when the user asks what's next, should I build X, or when editing docs/ROADMAP.md. Inserts dated entries at top of docs/BUILD_LOG.md (reverse chronological).
 ---
 
 # SOLAT ROADMAP & Phase Agent (1.2)
 
-When the user asks **"what's next?"**, **"should I build X?"**, or when editing [docs/ROADMAP.md](docs/ROADMAP.md), perform the following. Output phase status, next suggested tasks, ROADMAP edit suggestions, and (when applicable) a new build_log entry or the updated BUILD_LOG.md snippet.
+When the user asks **"what's next?"**, **"should I build X?"**, or when editing [docs/ROADMAP.md](docs/ROADMAP.md), perform the following. Output phase status, next suggested tasks, ROADMAP edit suggestions, and (when applicable) a new build_log entry or the updated docs/BUILD_LOG.md snippet.
 
 ## Phases (from ROADMAP)
 
@@ -26,7 +26,7 @@ Read [docs/ROADMAP.md](docs/ROADMAP.md) for the phase overview table and deliver
 ## When suggesting or applying ROADMAP/phase changes
 
 1. **Tick deliverables** — For each phase, tick only deliverables that exist in code (e.g. api/, backtest/, execution/, strategies/, market_data/, data/, catalog/, broker/ig/).
-2. **BUILD_LOG.md** — Insert a **dated entry at the top** of [BUILD_LOG.md](BUILD_LOG.md) (repo root), reverse chronological. Format: **Date** | **Phase or task** | **What changed** (ROADMAP tick, deliverable completed, or "next steps" decision). Place new entry immediately below the "Agent inserts new entries" comment.
+2. **docs/BUILD_LOG.md** — Insert a **dated entry at the top** of [docs/BUILD_LOG.md](docs/BUILD_LOG.md), reverse chronological. Format: **Date** | **Phase or task** | **What changed** (ROADMAP tick, deliverable completed, or "next steps" decision). Place new entry immediately below the "Agent inserts new entries" comment.
 
 ## Optional: "log this" / "update build log"
 
@@ -37,7 +37,7 @@ When the user says "log this" or "update build log", write only the BUILD_LOG en
 1. **Phase status** — Table or list of phases with completion state (from ROADMAP).
 2. **Next tasks** — Suggested next steps from ROADMAP (e.g. Terminal UI frontend deliverables, Hardening).
 3. **ROADMAP edit suggestions** — If deliverables in code are not ticked, suggest which boxes to check; if phase is complete, suggest updating the phase overview table.
-4. **Build_log** — When you propose or apply a phase-related change, provide the exact BUILD_LOG.md snippet to insert (newest first) or perform the edit.
+4. **Build_log** — When you propose or apply a phase-related change, provide the exact docs/BUILD_LOG.md snippet to insert (newest first) or perform the edit.
 
 ## Phase discipline
 

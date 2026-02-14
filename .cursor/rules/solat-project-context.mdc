@@ -38,7 +38,7 @@ The UI must never talk to IG directly. Only the engine talks to IG. The UI talks
 - `engine/` — Python engine package + tests
 - `docs/` — architecture, roadmap, security, conventions
 - `docs/AGENTS/` — agent specs, inventory, author prompt
-- `BUILD_LOG.md` — reverse-chronological build log (ROADMAP & Phase Agent updates)
+- `docs/BUILD_LOG.md` — reverse-chronological build log (ROADMAP & Phase Agent updates)
 - `scripts/` — dev launcher scripts
 
 **Engine (Python):**

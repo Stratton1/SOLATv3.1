@@ -26,7 +26,7 @@ When the user says **"Review this PR"**, **"Check my changes"**, or before pushi
 ### Documentation
 
 - [ ] **Behaviour change:** If behaviour or API contract changed, were docs updated? (ARCHITECTURE, ROADMAP, CONVENTIONS, SECURITY, README.) Suggest doc edits if applicable.
-- [ ] **ROADMAP:** If a phase deliverable was completed, suggest ticking the box in [docs/ROADMAP.md](docs/ROADMAP.md) and optionally adding a [BUILD_LOG.md](BUILD_LOG.md) entry.
+- [ ] **ROADMAP:** If a phase deliverable was completed, suggest ticking the box in [docs/ROADMAP.md](docs/ROADMAP.md) and optionally adding a [docs/BUILD_LOG.md](docs/BUILD_LOG.md) entry.
 
 ## Output
 

@@ -28,6 +28,7 @@ from solat_engine.backtest.models import (
     OrderAction,
     OrderRecord,
     PositionSide,
+    RangeMode,
     TradeRecord,
 )
 from solat_engine.backtest.portfolio import Portfolio
@@ -83,6 +84,8 @@ class BacktestEngineV1:
         self._all_orders: list[OrderRecord] = []
         self._all_trades: list[TradeRecord] = []
         self._warnings: list[str] = []
+        self._resolved_start: datetime | None = None
+        self._resolved_end: datetime | None = None
 
     def run(self, request: BacktestRequest) -> BacktestResult:
         """
@@ -97,13 +100,15 @@ class BacktestEngineV1:
         run_id = str(uuid4())[:8]
         started_at = datetime.now(UTC)
 
+        start_str = request.start.isoformat() if request.start else "max_available"
+        end_str = request.end.isoformat() if request.end else "max_available"
         logger.info(
             "Starting backtest run_id=%s: %d bots, %d symbols, %s to %s",
             run_id,
             len(request.bots),
             len(request.symbols),
-            request.start.isoformat(),
-            request.end.isoformat(),
+            start_str,
+            end_str,
         )
 
         self._emit_progress({
@@ -169,6 +174,44 @@ class BacktestEngineV1:
                 engine_version=ENGINE_VERSION,
             )
 
+        # Resolve date range
+        resolved_start = request.start
+        resolved_end = request.end
+
+        if request.range_mode == RangeMode.MAX_AVAILABLE:
+            # Use the widest available range across all requested symbols
+            for symbol in request.symbols:
+                avail = self._store.get_available_range(symbol, timeframe)
+                if avail:
+                    sym_start, sym_end = avail
+                    if resolved_start is None or sym_start < resolved_start:
+                        resolved_start = sym_start
+                    if resolved_end is None or sym_end > resolved_end:
+                        resolved_end = sym_end
+
+            if resolved_start is None or resolved_end is None:
+                return BacktestResult(
+                    run_id=run_id,
+                    ok=False,
+                    started_at=started_at,
+                    completed_at=datetime.now(UTC),
+                    request=request,
+                    errors=["No data available for requested symbols/timeframe"],
+                    engine_version=ENGINE_VERSION,
+                )
+
+            logger.info(
+                "Resolved max_available range: %s to %s",
+                resolved_start.isoformat(),
+                resolved_end.isoformat(),
+                extra={"range_mode": "max_available"},
+            )
+
+        # Store resolved dates and bars_per_day for helper methods
+        self._resolved_start = resolved_start
+        self._resolved_end = resolved_end
+        self._bars_per_day = int(24 * 60 / timeframe.minutes)
+
         # Run backtest loop for each symbol
         total_symbols = len(request.symbols)
         for sym_idx, symbol in enumerate(request.symbols):
@@ -184,8 +227,8 @@ class BacktestEngineV1:
             self._run_symbol(
                 symbol=symbol,
                 timeframe=timeframe,
-                start=request.start,
-                end=request.end,
+                start=resolved_start,
+                end=resolved_end,
                 request=request,
             )
 
@@ -197,12 +240,13 @@ class BacktestEngineV1:
             equity_curve=self._portfolio.equity_curve,
             trades=self._all_trades,
             initial_cash=request.initial_cash,
+            bars_per_day=self._bars_per_day,
             orders=self._all_orders,
             fill_summary=self._broker.get_fill_summary(),
             run_id=run_id,
             timeframe=request.timeframe,
-            data_start=request.start,
-            data_end=request.end,
+            data_start=resolved_start,
+            data_end=resolved_end,
             warnings_count=len(self._warnings),
         )
 
@@ -483,18 +527,25 @@ class BacktestEngineV1:
             bot_orders = [o for o in self._all_orders if o.bot == bot_name]
             symbols_traded = list({t.symbol for t in bot_trades})
 
+            # For single-symbol backtests, pass symbol to metrics
+            bot_symbol = symbols_traded[0] if len(symbols_traded) == 1 else (
+                request.symbols[0] if len(request.symbols) == 1 else None
+            )
+
             # Compute metrics
             metrics = compute_metrics_summary(
                 equity_curve=self._portfolio.equity_curve,
                 trades=bot_trades,
                 initial_cash=request.initial_cash,
                 bot=bot_name,
+                symbol=bot_symbol,
+                bars_per_day=self._bars_per_day,
                 orders=bot_orders,
                 fill_summary=self._broker.get_fill_summary(),
                 run_id=run_id,
                 timeframe=request.timeframe,
-                data_start=request.start,
-                data_end=request.end,
+                data_start=self._resolved_start,
+                data_end=self._resolved_end,
             )
 
             results.append(BotResult(
@@ -531,8 +582,8 @@ class BacktestEngineV1:
             "request": {
                 "symbols": request.symbols,
                 "timeframe": request.timeframe,
-                "start": request.start.isoformat(),
-                "end": request.end.isoformat(),
+                "start": self._resolved_start.isoformat() if self._resolved_start else None,
+                "end": self._resolved_end.isoformat() if self._resolved_end else None,
                 "bots": request.bots,
                 "initial_cash": request.initial_cash,
             },

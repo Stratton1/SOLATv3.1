@@ -4,6 +4,54 @@ Chronological record of major implementation prompts.
 
 ---
 
+## Backtest CLI Fix + Valid Sizing + Range Mode CLI
+
+**Date**: 2026-02-14
+**Tests**: 839 existing + 8 new = 847 passing
+
+### Summary
+
+Fixed `run_backtest.py` crash from datetime slicing (`ds[:10]` on datetime objects), fixed Symbol: None in reports, eliminated mass order rejections by adding `max_size` clamp to sizing and defaulting CLI to `FIXED_SIZE`, fixed `bars_per_day` not being passed from engine to metrics (caused wrong duration_days/missing_bar_pct), added `--range-mode max_available` to CLI, and added project memory/build log enforcement to CLAUDE.md.
+
+### Modified Files (5)
+
+- `engine/scripts/run_backtest.py` — `fmt_dt()` helper, G section in report, `--range-mode` flag, fixed-size default
+- `engine/solat_engine/backtest/sizing.py` — `max_size=100.0` clamp in `calculate_position_size()`
+- `engine/solat_engine/backtest/engine.py` — symbol pass-through to metrics, `bars_per_day` computed from timeframe
+- `engine/tests/test_platform_contracts.py` — 8 new tests (4 sizing safety + 4 CLI report helpers)
+- `CLAUDE.md` — added Project Memory & Build Log rule
+
+### New Files (1)
+
+- `engine/scripts/smoke_sweep_benchmark.py` — cache ON/OFF benchmark script
+
+---
+
+## "Finished Platform" Outputs + Validation + Speed
+
+**Date**: 2026-02-14
+**Tests**: 819 existing + 20 new = 839 passing
+
+### Summary
+
+Added authoritative platform documentation (`PLATFORM_END_STATE.md`, `REQUIRED_BACKTEST_OUTPUTS.md`), contract tests for scoring/WF field completeness, `duration_days` and `missing_bar_pct` population in MetricsSummary, `RangeMode.MAX_AVAILABLE` for backtests without explicit dates, `GET /data/available-range` endpoint, and ParquetStore DataFrame LRU cache for sweep speed-up.
+
+### New Files (3)
+
+- `engine/docs/ops/PLATFORM_END_STATE.md` — documents all 8 pipeline stages
+- `engine/docs/ops/REQUIRED_BACKTEST_OUTPUTS.md` — authoritative field checklists with scoring mapping
+- `engine/tests/test_platform_contracts.py` — 20 contract tests (5 classes)
+
+### Modified Files (5)
+
+- `engine/solat_engine/backtest/models.py` — `duration_days` field, `RangeMode` enum, optional start/end, validator
+- `engine/solat_engine/backtest/metrics.py` — populate `duration_days` + `missing_bar_pct`
+- `engine/solat_engine/backtest/engine.py` — resolve `max_available` range from manifests
+- `engine/solat_engine/data/parquet_store.py` — `get_available_range()`, DataFrame LRU cache, cache invalidation
+- `engine/solat_engine/api/data_routes.py` — `GET /data/available-range` endpoint
+
+---
+
 ## Project Memory + Sweep Reset Utility
 
 **Date**: 2026-02-14
@@ -167,3 +215,127 @@ Wired the optimisation pipeline end-to-end: WFO results → recommended set → 
 - **Bounded deques**: Bar buffers use `maxlen` to prevent memory growth
 - **LIVE fail-closed**: Both service-level and route-level checks block LIVE mode
 - **Supersede semantics**: Applying a new recommended set marks previous as "superseded"
+
+---
+
+## PROMPT 012 — Stabilization pass (tests + settings + docs truth)
+
+**Date**: 2026-02-08
+**Tests**: Verified all 495 engine tests pass (15/15 execution endpoint tests green)
+
+### Summary
+
+Stabilization pass completed for desktop error handling, Tauri plugin config safety, and documentation alignment. Added "Copy Error Details" in ErrorBoundary, fixed Tauri v2 plugin config null-object mismatches, and updated phase documentation to match delivered UI components.
+
+---
+
+## PROMPT 010 complete — LIVE Trading Gating + Account Lock + Reconciliation v2
+
+**Date**: 2026-02-01
+**Tests**: Added 42 comprehensive tests in `test_live_gates.py`
+
+### Summary
+
+Implemented multi-layer LIVE safety gates, order state machine lifecycle controls, UI live-confirmation workflow, and reconciliation reporting endpoints. ExecutionRouter now enforces gate checks on arm and routing in LIVE mode.
+
+---
+
+## Phase 008 started — Workspace + Multi-chart + Strategy config + Backtest viewer
+
+**Date**: 2026-02-01
+
+### Summary
+
+Prompt 008 scope initiated: workspace persistence, multi-panel layout presets, strategy config UX, backtest viewer/compare workflow, and UI performance hardening.
+
+---
+
+## Phase 007 complete — Terminal UI v1 (Desktop)
+
+**Date**: 2026-02-01
+
+### Summary
+
+Delivered end-to-end terminal UI flow with route navigation, typed engine client integration, candlestick chart overlays/signals, WebSocket event handling, and supporting data hooks.
+
+---
+
+## Phase 006 complete — Realtime market data backend + overlays/signals endpoints
+
+**Date**: 2026-02-01
+
+### Summary
+
+Implemented quote/bar models, polling + streaming scaffolding, deterministic bar builder, EventBus publishing, market subscribe/status routes, chart overlays/signals endpoints, and realtime bar persistence support with tests.
+
+---
+
+## Phase 005 complete — Live execution v1 (IG DEMO) + reconciliation + safety gates
+
+**Date**: 2026-02-01
+
+### Summary
+
+Implemented execution state models, signal-to-order routing, risk caps, kill switch, reconciliation sync, append-only audit ledger, and execution control endpoints with desktop integration and test coverage.
+
+---
+
+## Phase 004 complete — Backtest engine v1 + Elite 8 runtime + sweep runner
+
+**Date**: 2026-02-01
+
+### Summary
+
+Delivered deterministic bar-driven backtest runtime with broker simulator, portfolio accounting, metrics, artefacts, WS progress events, and batch sweep APIs, plus Elite 8 strategies and indicators.
+
+---
+
+## Phase 003 complete — Historical data layer (IG -> Parquet) + aggregation + quality + sync jobs
+
+**Date**: 2026-02-01
+
+### Summary
+
+Built chunked IG history fetch, Parquet upsert/dedupe store, deterministic aggregation chain, quality checks/reports, and async sync jobs with progress events and APIs.
+
+---
+
+## Phase 002 complete — IG REST auth + instrument catalogue
+
+**Date**: 2026-02-01
+
+### Summary
+
+Implemented AsyncIGClient session handling with rate limiting/redaction, IG account/search/status endpoints, and a bootstrap-able local instrument catalog with enrichment support and tests.
+
+---
+
+## Phase 001 complete — Repo foundations + engine/UI boot path
+
+**Date**: 2026-02-01
+
+### Summary
+
+Established monorepo structure, engine health/config/ws baseline, logging/settings primitives, core domain/interfaces/runtime scaffolding, CI, and a working Tauri desktop shell.
+
+---
+
+## ROADMAP updated — phase status aligned to reality
+
+**Date**: 2026-02-01
+
+### Summary
+
+Updated phase completion tracking in roadmap to reflect implemented modules and actual in-progress state.
+
+---
+
+## README updated — capabilities + config expanded
+
+**Date**: 2026-02-01
+
+### Summary
+
+Expanded README feature set, quick-start/run commands, configuration table coverage, and current-status narrative to match delivered functionality.
+
+---

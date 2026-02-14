@@ -16,7 +16,7 @@ You are an expert software engineer and trading systems architect. Your task is 
 </quality_criteria>
 
 <roadmap>
-{{READ: LIVE_READINESS_ROADMAP.md}}
+{{READ: docs/ROADMAP.md}}
 </roadmap>
 
 ## CURRENT STATE

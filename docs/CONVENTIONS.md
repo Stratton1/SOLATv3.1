@@ -79,6 +79,13 @@ export function StatusScreen({ health, isLoading }: StatusScreenProps) {
 - Extract complex state to custom hooks
 - Avoid prop drilling beyond 2 levels
 
+## Documentation Canonical Paths
+
+- Canonical roadmap: `docs/ROADMAP.md`
+- Canonical build log: `docs/BUILD_LOG.md`
+- Operational run notes: `docs/ops/PROJECT_MEMORY.md`
+- Do not create duplicate root copies of these docs.
+
 ## Run Artefacts
 
 ### Directory Structure

@@ -57,7 +57,7 @@ solat_v3.1/
 │   └── .env                     # Credentials (LIVE)
 ├── src/                         # React frontend
 ├── src-tauri/                   # Tauri Rust backend
-└── LIVE_READINESS_ROADMAP.md
+└── docs/ROADMAP.md
 ```
 
 ## Current State (as of 2026-02-05)

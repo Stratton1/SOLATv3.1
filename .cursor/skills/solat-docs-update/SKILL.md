@@ -19,7 +19,7 @@ When the user says **"update docs"** or after a significant engine or API change
 | Run artefact or metrics shape change | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) | Update Run Artefacts / Metrics JSON Structure. |
 | New Cursor agent | [docs/AGENTS/AGENTS-INVENTORY.md](docs/AGENTS/AGENTS-INVENTORY.md) | Add or update agent entry if applicable. |
 
-## Optional: when saving ROADMAP.md
+## Optional: when saving docs/ROADMAP.md
 
 Cross-check [docs/ROADMAP.md](docs/ROADMAP.md) with engine/ and api/: for each phase marked complete, verify deliverables are present in code; suggest ticking or un-ticking boxes.
 

@@ -217,6 +217,13 @@ Per `docs/ROADMAP.md`:
 
 Do not build later-phase features prematurely.
 
+## Project Memory & Build Log
+
+After every prompt/task that modifies code or configuration:
+1. **Prepend** an entry to `docs/ops/PROJECT_MEMORY.md` with: date, prompt number, summary of changes, test count, key files changed
+2. **Prepend** an entry to `docs/BUILD_LOG.md` with: date, title, test results, new/modified files list
+3. This is mandatory — do not skip even for small changes
+
 ## Key Documentation
 
 - `docs/ARCHITECTURE.md` - System design, data flows, WS event types
@@ -224,3 +231,7 @@ Do not build later-phase features prematurely.
 - `docs/SECURITY.md` - Credential handling, safety gating, CSP
 - `docs/CONVENTIONS.md` - Coding standards, metrics JSON schema
 - `docs/LIVE_RUNBOOK.md` - Live trading operations
+- `docs/ops/PROJECT_MEMORY.md` - Cumulative project memory (prepend new entries)
+- `docs/BUILD_LOG.md` - Build log with test counts and file changes
+- `engine/docs/ops/PLATFORM_END_STATE.md` - Pipeline stage outputs
+- `engine/docs/ops/REQUIRED_BACKTEST_OUTPUTS.md` - Field checklists for all combo types

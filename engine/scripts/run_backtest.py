@@ -20,11 +20,21 @@ from solat_engine.backtest.models import BacktestRequest, RiskConfig
 from solat_engine.data.parquet_store import ParquetStore
 
 
+def fmt_dt(val: object) -> str:
+    """Format a datetime or ISO string to YYYY-MM-DD for display."""
+    if val is None:
+        return "N/A"
+    if isinstance(val, datetime):
+        return val.strftime("%Y-%m-%d")
+    s = str(val)
+    return s[:10] if len(s) >= 10 else s
+
+
 def print_metrics_report(m: dict) -> None:
-    """Print standardized A-F metrics report from a MetricsSummary dict."""
+    """Print standardized A-G metrics report from a MetricsSummary dict."""
     w = 60
     print(f"\n{'='*w}")
-    print("BACKTEST METRICS REPORT (A-F)")
+    print("BACKTEST METRICS REPORT (A-G)")
     print(f"{'='*w}")
 
     # A. Run Metadata
@@ -33,11 +43,10 @@ def print_metrics_report(m: dict) -> None:
     print(f"  Bot:              {m.get('bot', 'N/A')}")
     print(f"  Symbol:           {m.get('symbol', 'N/A')}")
     print(f"  Timeframe:        {m.get('timeframe', 'N/A')}")
-    ds = m.get('data_start')
-    de = m.get('data_end')
-    print(f"  Data Start:       {ds[:10] if ds else 'N/A'}")
-    print(f"  Data End:         {de[:10] if de else 'N/A'}")
+    print(f"  Data Start:       {fmt_dt(m.get('data_start'))}")
+    print(f"  Data End:         {fmt_dt(m.get('data_end'))}")
     print(f"  Bar Count:        {m.get('bar_count', 0):,}")
+    print(f"  Duration Days:    {m.get('duration_days', 0):.1f}")
     print(f"  Initial Cash:     {m.get('initial_cash', 0):,.2f}")
     print(f"  Commission:       {m.get('commission_model', 'flat')}")
     print(f"  Spread Model:     {m.get('spread_model', 'fixed')}")
@@ -110,6 +119,12 @@ def print_metrics_report(m: dict) -> None:
     print(f"  NaN/Inf Clean:    {'PASS' if nan_ok else 'FAIL'}")
     print(f"  Warnings:         {m.get('warnings_count', 0)}")
 
+    # G. Extended (Tuning Pipeline)
+    print(f"\n--- G. Extended {'—'*42}")
+    print(f"  Trades/Day:       {m.get('trades_per_day', 0):.2f}")
+    print(f"  Equity Peak:      {m.get('equity_peak', 0):,.2f}")
+    print(f"  Missing Bar %:    {m.get('missing_bar_pct', 0):.2f}%")
+
     print(f"\n{'='*w}")
 
 
@@ -117,12 +132,13 @@ def run_single_backtest(
     bot: str,
     symbols: list[str],
     timeframe: str = "1h",
-    start_date: str = "2023-01-01",
-    end_date: str = "2025-12-31",
+    start_date: str | None = "2023-01-01",
+    end_date: str | None = "2025-12-31",
     initial_cash: float = 10000.0,
-    fixed_size: float | None = None,
+    fixed_size: float = 1.0,
     risk_per_trade_pct: float = 2.0,
     max_positions: int = 3,
+    range_mode: str = "fixed_window",
 ) -> dict:
     """Run a single bot backtest."""
     # Use absolute paths from script location
@@ -134,23 +150,29 @@ def run_single_backtest(
     store = ParquetStore(data_dir)
     engine = BacktestEngineV1(store, artefacts_dir)
 
-    # Parse dates
-    start_dt = datetime.fromisoformat(start_date).replace(tzinfo=UTC)
-    end_dt = datetime.fromisoformat(end_date).replace(tzinfo=UTC)
+    from solat_engine.backtest.models import RangeMode, SizingMethod
 
-    from solat_engine.backtest.models import SizingMethod
+    # Parse dates (None for max_available mode)
+    start_dt = None
+    end_dt = None
+    if start_date and range_mode == "fixed_window":
+        start_dt = datetime.fromisoformat(start_date).replace(tzinfo=UTC)
+    if end_date and range_mode == "fixed_window":
+        end_dt = datetime.fromisoformat(end_date).replace(tzinfo=UTC)
 
+    # Default to FIXED_SIZE for research-safe backtests
     risk = RiskConfig(
-        sizing_method=SizingMethod.FIXED_SIZE if fixed_size else SizingMethod.RISK_PER_TRADE,
-        fixed_size=fixed_size or 1.0,
+        sizing_method=SizingMethod.FIXED_SIZE,
+        fixed_size=fixed_size,
         risk_per_trade_pct=risk_per_trade_pct,
-        max_open_positions=max_positions
+        max_open_positions=max_positions,
     )
 
     request = BacktestRequest(
         bots=[bot],
         symbols=symbols,
         timeframe=timeframe,
+        range_mode=RangeMode(range_mode),
         start=start_dt,
         end=end_dt,
         initial_cash=initial_cash,
@@ -181,8 +203,9 @@ def run_single_backtest(
 def run_sweep(
     symbols: list[str] | None = None,
     timeframe: str = "1h",
-    start_date: str = "2023-01-01",
-    end_date: str = "2025-12-31",
+    start_date: str | None = "2023-01-01",
+    end_date: str | None = "2025-12-31",
+    range_mode: str = "fixed_window",
 ) -> dict:
     """Run all 8 bots."""
     bots = [
@@ -213,6 +236,7 @@ def run_sweep(
                 timeframe=timeframe,
                 start_date=start_date,
                 end_date=end_date,
+                range_mode=range_mode,
             )
             results.append(result)
 
@@ -233,8 +257,12 @@ def main():
     parser.add_argument("--timeframe", default="1h", help="Timeframe")
     parser.add_argument("--start", default="2023-01-01", help="Start date")
     parser.add_argument("--end", default="2025-12-31", help="End date")
+    parser.add_argument("--range-mode", default="fixed_window",
+                        choices=["fixed_window", "max_available"],
+                        help="Date range mode (fixed_window or max_available)")
     parser.add_argument("--initial-cash", type=float, default=10000.0, help="Initial cash")
-    parser.add_argument("--fixed-size", type=float, help="Fixed lot size (overrides percentage sizing)")
+    parser.add_argument("--fixed-size", type=float, default=1.0,
+                        help="Fixed lot size (default: 1.0 for research-safe sizing)")
     parser.add_argument("--risk-pct", type=float, default=2.0, help="Risk percentage per trade")
     parser.add_argument("--max-pos", type=int, default=3, help="Max concurrent positions")
     parser.add_argument("--sweep", action="store_true", help="Run all 8 bots")
@@ -250,6 +278,7 @@ def main():
             timeframe=args.timeframe,
             start_date=args.start,
             end_date=args.end,
+            range_mode=args.range_mode,
         )
 
         # Summary
@@ -279,6 +308,7 @@ def main():
             fixed_size=args.fixed_size,
             risk_per_trade_pct=args.risk_pct,
             max_positions=args.max_pos,
+            range_mode=args.range_mode,
         )
 
         # Print full A-F report

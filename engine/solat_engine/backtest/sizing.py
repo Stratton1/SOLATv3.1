@@ -34,6 +34,7 @@ def calculate_position_size(
     risk_config: RiskConfig,
     pip_size: float = 0.0001,
     min_size: float = 0.01,
+    max_size: float = 100.0,
     size_step: float = 0.01,
 ) -> SizeResult:
     """
@@ -42,6 +43,7 @@ def calculate_position_size(
     For RISK_PER_TRADE:
     - Uses stop loss distance to determine size
     - size = (equity * risk_pct) / (stop_distance_in_price)
+    - Clamped to max_size to prevent sizing explosion with tiny stops
 
     For FIXED_SIZE:
     - Returns configured fixed size
@@ -50,6 +52,7 @@ def calculate_position_size(
     """
     if risk_config.sizing_method == SizingMethod.FIXED_SIZE:
         size = risk_config.fixed_size
+        size = min(size, max_size)
         size = _round_to_step(size, size_step)
         size = max(min_size, size)
 
@@ -65,6 +68,7 @@ def calculate_position_size(
             "No stop loss in signal, falling back to fixed size for risk-per-trade"
         )
         size = risk_config.fixed_size
+        size = min(size, max_size)
         size = _round_to_step(size, size_step)
         size = max(min_size, size)
 
@@ -92,6 +96,9 @@ def calculate_position_size(
     # For forex: size (lots) = risk_amount / (stop_distance_in_pips * pip_value)
     # Simplified: size = risk_amount / stop_distance (assuming 1:1 pip value per lot)
     size = risk_amount / stop_distance
+
+    # Clamp to max_size to prevent sizing explosion from tiny stop distances
+    size = min(size, max_size)
 
     # Round to step
     size = _round_to_step(size, size_step)

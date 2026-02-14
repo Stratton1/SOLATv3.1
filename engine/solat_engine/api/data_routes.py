@@ -361,6 +361,35 @@ async def data_availability_detail(
     return details
 
 
+@router.get("/available-range")
+async def get_available_range(
+    symbol: str = Query(..., description="Instrument symbol"),
+    timeframe: str = Query(default="1h", description="Bar timeframe"),
+    store: ParquetStore = Depends(get_parquet_store),
+) -> dict[str, Any]:
+    """Get the available date range for a symbol/timeframe from manifests."""
+    try:
+        tf = SupportedTimeframe(timeframe)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid timeframe: {timeframe}")
+
+    result = store.get_available_range(symbol, tf)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"No data for {symbol}/{timeframe}")
+
+    start_dt, end_dt = result
+    manifest = store.get_manifest(symbol, tf)
+    row_count = manifest.row_count if manifest else 0
+
+    return {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "start": start_dt.isoformat(),
+        "end": end_dt.isoformat(),
+        "row_count": row_count,
+    }
+
+
 @router.get("/bars", response_model=BarsResponse)
 async def get_bars(
     symbol: str = Query(..., description="Instrument symbol"),

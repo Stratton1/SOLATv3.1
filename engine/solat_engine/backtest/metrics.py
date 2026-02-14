@@ -529,6 +529,19 @@ def compute_metrics_summary(
             nan_inf_ok = False
             break
 
+    # Duration in calendar days
+    duration_days = years * 365.25
+
+    # Missing bar percentage: compare actual bars to expected from date range
+    missing_bar_pct_val = 0.0
+    if data_start and data_end and bars_per_day > 0 and num_bars > 0:
+        calendar_days = (data_end - data_start).total_seconds() / 86400
+        # Approximate trading days as ~5/7 of calendar days (FX 24/5)
+        trading_days_expected = calendar_days * 5.0 / 7.0
+        expected_bars = int(trading_days_expected * bars_per_day)
+        if expected_bars > 0:
+            missing_bar_pct_val = max(0.0, (expected_bars - num_bars) / expected_bars * 100.0)
+
     # --- G. Extended metrics for tuning pipeline ---
     trading_days = years * 252
     trades_per_day = trade_metrics["total_trades"] / max(trading_days, 1.0)
@@ -547,6 +560,7 @@ def compute_metrics_summary(
         data_start=data_start,
         data_end=data_end,
         bar_count=num_bars,
+        duration_days=duration_days,
         initial_cash=initial_cash,
         # B. Trade
         total_trades=trade_metrics["total_trades"],
@@ -611,4 +625,5 @@ def compute_metrics_summary(
         equity_peak=equity_peak,
         best_5_trades_pnl=best_5,
         worst_5_trades_pnl=worst_5,
+        missing_bar_pct=missing_bar_pct_val,
     )

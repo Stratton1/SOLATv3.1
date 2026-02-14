@@ -23,6 +23,40 @@
       "position_size": 1.0
     }
   },
-  "approved_combos": [],
-  "_note": "approved_combos populated after 070-D/E sweep + walk-forward results"
+  "approved_combos": [
+    {
+      "symbol": "EURUSD",
+      "bot": "CloudTwist",
+      "timeframe": "4h",
+      "role": "primary",
+      "backtest_sharpe": 22.64,
+      "wf_oos_sharpe": 28.34,
+      "wf_consistency": 0.87,
+      "wf_folds_profitable_pct": 0.70,
+      "wf_run_id": "wf-c7eab272"
+    },
+    {
+      "symbol": "AUDUSD",
+      "bot": "KijunBouncer",
+      "timeframe": "4h",
+      "role": "secondary",
+      "backtest_sharpe": 23.98,
+      "wf_oos_sharpe": 23.08,
+      "wf_consistency": 0.32,
+      "wf_folds_profitable_pct": 0.75,
+      "wf_run_id": "wf-e44b3be1"
+    },
+    {
+      "symbol": "USDJPY",
+      "bot": "CloudTwist",
+      "timeframe": "4h",
+      "role": "tertiary",
+      "backtest_sharpe": 28.50,
+      "wf_oos_sharpe": 13.50,
+      "wf_consistency": 0.24,
+      "wf_folds_profitable_pct": 0.625,
+      "wf_run_id": "wf-3f15c92b"
+    }
+  ],
+  "_note": "Approved via 070-D Grand Sweep + 070-E Walk-Forward (2026-02-14). All combos OOS Sharpe >= 1.0."
 }

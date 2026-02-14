@@ -1,0 +1,59 @@
+
+================================================================================
+PHASE 070-B: IG LIVE EPIC MAPPING AUDIT
+================================================================================
+
+Asset Class     Complete   Missing    Total     
+---------------------------------------------
+commodity       4          2          6         
+crypto          0          4          4         
+fx              10         0          10        
+index           8          0          8         
+---------------------------------------------
+TOTAL           22         6          28        
+
+--- Instruments with LIVE epic (22) ---
+
+Symbol     Class        Demo Epic                      Live Epic                     
+----------------------------------------------------------------------------------
+UKOIL      commodity    CC.D.BRENT.USS.IP              CC.D.BRENT.USS.IP (same)
+USOIL      commodity    CC.D.WTI.USS.IP                CC.D.WTI.USS.IP (same)
+XAGUSD     commodity    CC.D.SILVER.USS.IP             CC.D.SILVER.USS.IP (same)
+XAUUSD     commodity    CC.D.GOLD.USS.IP               CC.D.GOLD.USS.IP (same)
+AUDUSD     fx           CS.D.AUDUSD.MINI.IP            CS.D.AUDUSD.TODAY.IP
+EURGBP     fx           CS.D.EURGBP.MINI.IP            CS.D.EURGBP.TODAY.IP
+EURJPY     fx           CS.D.EURJPY.MINI.IP            CS.D.EURJPY.TODAY.IP
+EURUSD     fx           CS.D.EURUSD.MINI.IP            CS.D.EURUSD.TODAY.IP
+GBPJPY     fx           CS.D.GBPJPY.MINI.IP            CS.D.GBPJPY.TODAY.IP
+GBPUSD     fx           CS.D.GBPUSD.MINI.IP            CS.D.GBPUSD.TODAY.IP
+NZDUSD     fx           CS.D.NZDUSD.MINI.IP            CS.D.NZDUSD.TODAY.IP
+USDCAD     fx           CS.D.USDCAD.MINI.IP            CS.D.USDCAD.TODAY.IP
+USDCHF     fx           CS.D.USDCHF.MINI.IP            CS.D.USDCHF.TODAY.IP
+USDJPY     fx           CS.D.USDJPY.MINI.IP            CS.D.USDJPY.TODAY.IP
+AUS200     index        IX.D.ASX.IFD.IP                IX.D.ASX.IFD.IP (same)
+FRA40      index        IX.D.CAC.IFD.IP                IX.D.CAC.IFD.IP (same)
+GER40      index        IX.D.DAX.IFD.IP                IX.D.DAX.IFD.IP (same)
+JP225      index        IX.D.NIKKEI.IFD.IP             IX.D.NIKKEI.IFD.IP (same)
+NAS100     index        IX.D.NASDAQ.IFD.IP             IX.D.NASDAQ.IFD.IP (same)
+UK100      index        IX.D.FTSE.CFD.IP               IX.D.FTSE.CFD.IP (same)
+US30       index        IX.D.DOW.IFD.IP                IX.D.DOW.IFD.IP (same)
+US500      index        IX.D.SPTRD.IFD.IP              IX.D.SPTRD.IFD.IP (same)
+
+--- Instruments MISSING live epic (6) ---
+
+  COPPER     (commodity) — no demo_epic or live_epic
+  NATGAS     (commodity) — no demo_epic or live_epic
+  BTCUSD     (crypto) — no demo_epic or live_epic
+  ETHUSD     (crypto) — no demo_epic or live_epic
+  LTCUSD     (crypto) — no demo_epic or live_epic
+  XRPUSD     (crypto) — no demo_epic or live_epic
+
+--- Notes ---
+  FX: DEMO uses MINI, LIVE uses TODAY (verified pattern)
+  Indices/Commodities: same epic for DEMO and LIVE (common IG pattern)
+  6 instruments have no IG epic — excluded from trading
+
+================================================================================
+RESULT: 6 instruments missing epics (non-blocking for go-live)
+================================================================================
+

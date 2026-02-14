@@ -1,0 +1,111 @@
+
+============================================================
+PARALLEL GRAND SWEEP v4 (Catalogue-First)
+2026-02-14T02:35:55.287654
+============================================================
+Bots: 9 - TKCrossSniper, KumoBreaker, ChikouConfirmer, KijunBouncer, CloudTwist, MomentumRider, TrendSurfer, ReversalHunter, ChikouKaizen
+Symbols: 10 (catalogue-sourced)
+Timeframes: ['1h', '4h']
+Date range: 2024-01-01 to 2024-12-31
+Derive missing: False
+Workers: 7
+Resume: False
+============================================================
+
+Running data preflight checks...
+
+Preflight results:
+  Valid combos: 180
+  Skipped: 0 (0 symbol/tf pairs)
+
+Starting sweep: 180 combos
+  Bots: 9
+  Symbols: 10 -> storage: ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'USDCAD', 'NZDUSD', 'EURGBP', 'EURJPY', 'GBPJPY']
+  Timeframes: ['1h', '4h']
+============================================================
+
+Started sweep 12e2ae23: 180 combos (180 pending, 0 skipped)
+[1/180] 0.6% ChikouConfirmer/EURUSD/1h Sharpe=0.000 ETA: 963s    [2/180] 1.1% TrendSurfer/EURUSD/1h Sharpe=-2.732 ETA: 1634s    [3/180] 1.7% ChikouKaizen/EURUSD/1h Sharpe=-8.293 ETA: 1175s    [4/180] 2.2% TKCrossSniper/EURUSD/4h Sharpe=4.068 ETA: 926s    [5/180] 2.8% ReversalHunter/EURUSD/1h Sharpe=0.000 ETA: 1111s    [6/180] 3.3% KijunBouncer/EURUSD/1h Sharpe=-8.183 ETA: 1394s    [8/180] 4.4% KumoBreaker/EURUSD/4h Sharpe=12.937 ETA: 1066s    [9/180] 5.0% TKCrossSniper/EURUSD/1h Sharpe=-0.232 ETA: 1271s    [13/180] 7.2% ChikouKaizen/EURUSD/4h Sharpe=12.401 ETA: 1320s    [15/180] 8.3% ReversalHunter/EURUSD/4h Sharpe=0.000 ETA: 1148s    [16/180] 8.9% MomentumRider/EURUSD/4h Sharpe=-4.541 ETA: 1083s    [17/180] 9.4% TrendSurfer/EURUSD/4h Sharpe=-16.495 ETA: 1024s    [18/180] 10.0% MomentumRider/EURUSD/1h Sharpe=-9.235 ETA: 1142s    [19/180] 10.6% ChikouConfirmer/GBPUSD/1h Sharpe=0.000 ETA: 1121s    [20/180] 11.1% ReversalHunter/GBPUSD/1h Sharpe=0.000 ETA: 1130s    [21/180] 11.7% ChikouKaizen/GBPUSD/1h Sharpe=-6.256 ETA: 1082s    [22/180] 12.2% KijunBouncer/GBPUSD/1h Sharpe=-17.383 ETA: 1146s    [23/180] 12.8% TKCrossSniper/GBPUSD/4h Sharpe=-11.824 ETA: 1097s    [24/180] 13.3% TKCrossSniper/GBPUSD/1h Sharpe=-4.770 ETA: 1159s    [27/180] 15.0% TrendSurfer/GBPUSD/1h Sharpe=-11.928 ETA: 1197s    [28/180] 15.6% KumoBreaker/GBPUSD/4h Sharpe=-1.059 ETA: 1153s    [30/180] 16.7% ChikouKaizen/GBPUSD/4h Sharpe=-2.766 ETA: 1150s    [31/180] 17.2% ReversalHunter/GBPUSD/4h Sharpe=0.000 ETA: 1108s    [34/180] 18.9% TrendSurfer/GBPUSD/4h Sharpe=-4.928 ETA: 1004s    [36/180] 20.0% MomentumRider/GBPUSD/1h Sharpe=-2.040 ETA: 1021s    [37/180] 20.6% ChikouConfirmer/USDJPY/1h Sharpe=0.000 ETA: 1008s    [38/180] 21.1% ReversalHunter/USDJPY/1h Sharpe=0.000 ETA: 1006s    [39/180] 21.7% ChikouKaizen/USDJPY/1h Sharpe=2.471 ETA: 979s    [40/180] 22.2% TKCrossSniper/USDJPY/4h Sharpe=16.943 ETA: 952s    [41/180] 22.8% KijunBouncer/USDJPY/1h Sharpe=-1.362 ETA: 978s    [42/180] 23.3% ChikouConfirmer/USDJPY/4h Sharpe=0.000 ETA: 949s    [44/180] 24.4% KumoBreaker/USDJPY/1h Sharpe=-5.757 ETA: 1001s    [45/180] 25.0% KumoBreaker/USDJPY/4h Sharpe=-9.155 ETA: 975s    [46/180] 25.6% CloudTwist/USDJPY/1h Sharpe=3.592 ETA: 998s    [47/180] 26.1% TrendSurfer/USDJPY/1h Sharpe=-11.446 ETA: 1013s    [50/180] 27.8% ReversalHunter/USDJPY/4h Sharpe=0.000 ETA: 935s    [52/180] 28.9% TrendSurfer/USDJPY/4h Sharpe=0.158 ETA: 891s    [54/180] 30.0% MomentumRider/USDJPY/1h Sharpe=-2.717 ETA: 894s    [55/180] 30.6% ChikouConfirmer/USDCHF/1h Sharpe=0.000 ETA: 884s    [56/180] 31.1% ReversalHunter/USDCHF/1h Sharpe=0.000 ETA: 880s    [57/180] 31.7% ChikouKaizen/USDCHF/1h Sharpe=-0.562 ETA: 861s    [58/180] 32.2% KijunBouncer/USDCHF/1h Sharpe=2.770 ETA: 874s    [60/180] 33.3% ChikouConfirmer/USDCHF/4h Sharpe=0.000 ETA: 834s    [61/180] 33.9% KumoBreaker/USDCHF/1h Sharpe=-1.192 ETA: 848s    [63/180] 35.0% TrendSurfer/USDCHF/1h Sharpe=1.805 ETA: 869s    [64/180] 35.6% KumoBreaker/USDCHF/4h Sharpe=-7.208 ETA: 850s    [65/180] 36.1% CloudTwist/USDCHF/1h Sharpe=6.102 ETA: 861s    [68/180] 37.8% ReversalHunter/USDCHF/4h Sharpe=0.000 ETA: 804s    [69/180] 38.3% CloudTwist/USDCHF/4h Sharpe=13.051 ETA: 787s    [71/180] 39.4% MomentumRider/USDCHF/4h Sharpe=-0.182 ETA: 755s    [72/180] 40.0% MomentumRider/USDCHF/1h Sharpe=6.511 ETA: 768s    [73/180] 40.6% ChikouConfirmer/AUDUSD/1h Sharpe=0.000 ETA: 759s    [74/180] 41.1% ReversalHunter/AUDUSD/1h Sharpe=0.000 ETA: 752s    [75/180] 41.7% ChikouKaizen/AUDUSD/1h Sharpe=-1.680 ETA: 737s    [76/180] 42.2% TKCrossSniper/AUDUSD/4h Sharpe=18.309 ETA: 722s    [77/180] 42.8% KumoBreaker/AUDUSD/4h Sharpe=-11.663 ETA: 707s    [78/180] 43.3% KijunBouncer/AUDUSD/1h Sharpe=-5.768 ETA: 713s    [80/180] 44.4% TKCrossSniper/AUDUSD/1h Sharpe=-2.409 ETA: 704s    [82/180] 45.6% KijunBouncer/AUDUSD/4h Sharpe=23.978 ETA: 695s    [83/180] 46.1% CloudTwist/AUDUSD/4h Sharpe=19.823 ETA: 681s    [86/180] 47.8% ReversalHunter/AUDUSD/4h Sharpe=0.000 ETA: 657s    [88/180] 48.9% MomentumRider/AUDUSD/4h Sharpe=-22.864 ETA: 631s    [89/180] 49.4% TrendSurfer/AUDUSD/1h Sharpe=-0.806 ETA: 634s    [90/180] 50.0% MomentumRider/AUDUSD/1h Sharpe=-2.097 ETA: 640s    [91/180] 50.6% ChikouConfirmer/USDCAD/1h Sharpe=0.000 ETA: 632s    [92/180] 51.1% TrendSurfer/USDCAD/1h Sharpe=15.420 ETA: 628s    [93/180] 51.7% ChikouKaizen/USDCAD/1h Sharpe=-2.803 ETA: 616s    [94/180] 52.2% TKCrossSniper/USDCAD/4h Sharpe=-15.663 ETA: 603s    [96/180] 53.3% ChikouConfirmer/USDCAD/4h Sharpe=0.000 ETA: 591s    [97/180] 53.9% KumoBreaker/USDCAD/1h Sharpe=4.613 ETA: 593s    [100/180] 55.6% KijunBouncer/USDCAD/4h Sharpe=-1.006 ETA: 570s    [101/180] 56.1% CloudTwist/USDCAD/1h Sharpe=1.105 ETA: 571s    [103/180] 57.2% ReversalHunter/USDCAD/4h Sharpe=0.000 ETA: 546s    [104/180] 57.8% CloudTwist/USDCAD/4h Sharpe=-24.032 ETA: 535s    [107/180] 59.4% MomentumRider/USDCAD/4h Sharpe=-5.902 ETA: 510s    [108/180] 60.0% MomentumRider/USDCAD/1h Sharpe=-7.225 ETA: 511s    [109/180] 60.6% ChikouConfirmer/NZDUSD/1h Sharpe=0.000 ETA: 503s    [110/180] 61.1% ReversalHunter/NZDUSD/1h Sharpe=0.000 ETA: 496s    [111/180] 61.7% ChikouKaizen/NZDUSD/1h Sharpe=-0.813 ETA: 486s    [112/180] 62.2% TKCrossSniper/NZDUSD/4h Sharpe=-1.657 ETA: 475s    [113/180] 62.8% KijunBouncer/NZDUSD/1h Sharpe=-0.332 ETA: 474s    [115/180] 63.9% ChikouConfirmer/NZDUSD/4h Sharpe=0.000 ETA: 452s    [116/180] 64.4% KumoBreaker/NZDUSD/1h Sharpe=-6.196 ETA: 451s    [118/180] 65.6% CloudTwist/NZDUSD/1h Sharpe=-4.166 ETA: 448s    [119/180] 66.1% KijunBouncer/NZDUSD/4h Sharpe=12.399 ETA: 438s    [121/180] 67.2% ReversalHunter/NZDUSD/4h Sharpe=0.000 ETA: 417s    [123/180] 68.3% TrendSurfer/NZDUSD/4h Sharpe=9.033 ETA: 397s    [125/180] 69.4% TrendSurfer/NZDUSD/1h Sharpe=-4.454 ETA: 385s    [126/180] 70.0% MomentumRider/NZDUSD/1h Sharpe=6.043 ETA: 383s    [127/180] 70.6% ChikouConfirmer/EURGBP/1h Sharpe=0.000 ETA: 376s    [128/180] 71.1% TrendSurfer/EURGBP/1h Sharpe=-8.321 ETA: 370s    [129/180] 71.7% ChikouKaizen/EURGBP/1h Sharpe=-8.376 ETA: 361s    [130/180] 72.2% TKCrossSniper/EURGBP/4h Sharpe=4.112 ETA: 351s    [131/180] 72.8% KumoBreaker/EURGBP/4h Sharpe=5.015 ETA: 342s    [132/180] 73.3% KijunBouncer/EURGBP/1h Sharpe=-3.884 ETA: 339s    [133/180] 73.9% ChikouConfirmer/EURGBP/4h Sharpe=0.000 ETA: 329s    [135/180] 75.0% KumoBreaker/EURGBP/1h Sharpe=-18.331 ETA: 322s    [136/180] 75.6% CloudTwist/EURGBP/1h Sharpe=0.799 ETA: 318s    [137/180] 76.1% KijunBouncer/EURGBP/4h Sharpe=-6.262 ETA: 309s    [139/180] 77.2% ReversalHunter/EURGBP/4h Sharpe=0.000 ETA: 291s    [142/180] 78.9% MomentumRider/EURGBP/4h Sharpe=-40.576 ETA: 265s    [143/180] 79.4% ReversalHunter/EURGBP/1h Sharpe=0.000 ETA: 259s    [144/180] 80.0% MomentumRider/EURGBP/1h Sharpe=-12.157 ETA: 256s    [145/180] 80.6% ChikouConfirmer/EURJPY/1h Sharpe=0.000 ETA: 248s    [146/180] 81.1% ReversalHunter/EURJPY/1h Sharpe=0.000 ETA: 241s    [147/180] 81.7% ChikouKaizen/EURJPY/1h Sharpe=3.949 ETA: 233s    [148/180] 82.2% TKCrossSniper/EURJPY/4h Sharpe=-2.021 ETA: 224s    [149/180] 82.8% KijunBouncer/EURJPY/1h Sharpe=6.896 ETA: 219s    [150/180] 83.3% ChikouConfirmer/EURJPY/4h Sharpe=0.000 ETA: 211s    [152/180] 84.4% TKCrossSniper/EURJPY/1h Sharpe=-2.491 ETA: 198s    [154/180] 85.6% CloudTwist/EURJPY/1h Sharpe=0.661 ETA: 187s    [155/180] 86.1% KijunBouncer/EURJPY/4h Sharpe=-3.299 ETA: 179s    [157/180] 87.2% CloudTwist/EURJPY/4h Sharpe=14.819 ETA: 163s    [159/180] 88.3% TrendSurfer/EURJPY/4h Sharpe=-10.749 ETA: 147s    [161/180] 89.4% TrendSurfer/EURJPY/1h Sharpe=-6.479 ETA: 133s    [162/180] 90.0% MomentumRider/EURJPY/1h Sharpe=-6.066 ETA: 128s    [163/180] 90.6% ChikouConfirmer/GBPJPY/1h Sharpe=0.000 ETA: 120s    [164/180] 91.1% ReversalHunter/GBPJPY/1h Sharpe=0.000 ETA: 113s    [165/180] 91.7% ChikouKaizen/GBPJPY/1h Sharpe=-4.551 ETA: 106s    [166/180] 92.2% TKCrossSniper/GBPJPY/4h Sharpe=-1.700 ETA: 98s    [167/180] 92.8% KumoBreaker/GBPJPY/4h Sharpe=3.411 ETA: 91s    [168/180] 93.3% ChikouConfirmer/GBPJPY/4h Sharpe=0.000 ETA: 83s    [169/180] 93.9% KijunBouncer/GBPJPY/1h Sharpe=0.497 ETA: 77s    [170/180] 94.4% TKCrossSniper/GBPJPY/1h Sharpe=-0.970 ETA: 71s    [171/180] 95.0% KumoBreaker/GBPJPY/1h Sharpe=1.510 ETA: 64s    [172/180] 95.6% CloudTwist/GBPJPY/1h Sharpe=-10.366 ETA: 57s    [175/180] 97.2% CloudTwist/GBPJPY/4h Sharpe=14.148 ETA: 35s    [176/180] 97.8% ReversalHunter/GBPJPY/4h Sharpe=0.000 ETA: 28s    [179/180] 99.4% TrendSurfer/GBPJPY/1h Sharpe=-8.580 ETA: 7s    [180/180] 100.0% MomentumRider/GBPJPY/1h Sharpe=-0.336     
+
+Sweep 12e2ae23 completed: 180/180 in 1283.9s
+
+ℹ️  Curated allowlist not applied. Use --apply-allowlist to apply.
+
+============================================================
+SWEEP SUMMARY
+============================================================
+
+TOP 20 BY SHARPE (min 10 trades):
+          bot symbol timeframe  total_trades    sharpe  win_rate  max_drawdown       pnl
+   CloudTwist USDJPY        4h            21 28.499726  0.666667  3.036712e-05 11.330018
+ KijunBouncer AUDUSD        4h            22 23.977603  0.636364  9.693742e-08  0.034915
+   CloudTwist EURUSD        4h            16 22.639170  0.687500  1.041196e-07  0.034151
+ KijunBouncer USDJPY        4h            18 21.877264  0.611111  3.303765e-05  7.897126
+ ChikouKaizen USDJPY        4h            50 20.371291  0.380000  2.258955e-05  6.755125
+   CloudTwist AUDUSD        4h            22 19.823498  0.590909  2.592887e-07  0.028349
+TKCrossSniper AUDUSD        4h            14 18.309066  0.571429  8.749629e-08  0.015947
+TKCrossSniper USDJPY        4h            11 16.943220  0.545455  2.566605e-05  4.337868
+  TrendSurfer USDCAD        1h            53 15.419729  0.471698  1.026174e-07  0.038771
+   CloudTwist EURJPY        4h            24 14.818698  0.541667  4.014348e-05  5.905961
+   CloudTwist GBPJPY        4h            17 14.148341  0.529412  3.728309e-05  5.022138
+   CloudTwist USDCHF        4h            25 13.050823  0.520000  1.683291e-07  0.020668
+  KumoBreaker EURUSD        4h            23 12.936945  0.521739  1.348000e-07  0.018728
+ ChikouKaizen EURUSD        4h            47 12.400856  0.425532  1.590700e-07  0.016533
+ KijunBouncer NZDUSD        4h            21 12.398670  0.523810  1.258795e-07  0.017466
+ ChikouKaizen AUDUSD        4h            51 10.868163  0.411765  1.249676e-07  0.013976
+ KijunBouncer GBPUSD        4h            24 10.296518  0.500000  2.704423e-07  0.022860
+  TrendSurfer GBPJPY        4h            18  9.136673  0.333333  4.877162e-05  2.813995
+  TrendSurfer NZDUSD        4h            19  9.033073  0.421053  1.038805e-07  0.008083
+ KijunBouncer EURJPY        1h            88  6.895751  0.488636  4.124192e-05  4.751202
+
+BOT PERFORMANCE (avg Sharpe where trades >= 10):
+               sharpe  win_rate  total_trades
+bot                                          
+CloudTwist      3.100     0.461          1000
+KijunBouncer    0.817     0.453          1267
+TKCrossSniper  -2.135     0.399           703
+TrendSurfer    -2.383     0.315           948
+ChikouKaizen   -2.628     0.328          2490
+KumoBreaker    -5.894     0.361           790
+MomentumRider  -6.084     0.370          1039
+
+SYMBOL PERFORMANCE (avg Sharpe where trades >= 10):
+        sharpe  win_rate  total_trades
+symbol                                
+USDJPY   4.228     0.437           741
+AUDUSD   2.109     0.411           871
+USDCHF  -0.104     0.385           846
+EURUSD  -1.727     0.391           805
+EURJPY  -1.864     0.379           847
+NZDUSD  -2.125     0.398           796
+GBPJPY  -2.859     0.385           799
+GBPUSD  -5.302     0.362           881
+USDCAD  -5.988     0.351           835
+EURGBP  -8.095     0.341           816
+
+TIMEFRAME PERFORMANCE:
+           sharpe  win_rate  total_trades
+timeframe                                
+4h         -0.748     0.402          1728
+1h         -3.597     0.366          6509
+
+Total combinations tested: 180
+Successful: 180
+Failed: 0
+============================================================
+
+
+============================================================
+OUTPUT FILES
+============================================================
+  Sweep dir:     /Users/joseph/Projects/SOLAT_ALL/solat_v3.1/engine/data/sweeps/12e2ae23
+  Output dir:    /Users/joseph/Projects/SOLAT_ALL/solat_v3.1/engine/data/sweep_results/sweep_live_20260214_025719
+  results.csv:   /Users/joseph/Projects/SOLAT_ALL/solat_v3.1/engine/data/sweep_results/sweep_live_20260214_025719/results.csv
+  results.parquet: /Users/joseph/Projects/SOLAT_ALL/solat_v3.1/engine/data/sweep_results/sweep_live_20260214_025719/results.parquet
+  ranked.csv:    /Users/joseph/Projects/SOLAT_ALL/solat_v3.1/engine/data/sweep_results/sweep_live_20260214_025719/ranked.csv (140 combos)
+  top_picks.json: /Users/joseph/Projects/SOLAT_ALL/solat_v3.1/engine/data/sweep_results/sweep_live_20260214_025719/top_picks.json
+  preflight.json: /Users/joseph/Projects/SOLAT_ALL/solat_v3.1/engine/data/sweep_results/sweep_live_20260214_025719/preflight.json
+  disabled_bots.json: /Users/joseph/Projects/SOLAT_ALL/solat_v3.1/engine/data/sweep_results/sweep_live_20260214_025719/disabled_bots.json (2 broken)
+  curated_allowlist.json: /Users/joseph/Projects/SOLAT_ALL/solat_v3.1/engine/data/sweep_results/sweep_live_20260214_025719/curated_allowlist.json (41 combos)
+============================================================
+

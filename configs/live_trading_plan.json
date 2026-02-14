@@ -1,0 +1,28 @@
+{
+  "version": "070-H",
+  "created": "2026-02-14",
+  "starting_capital_gbp": 10000,
+  "currency": "GBP",
+  "risk_per_trade_pct": 0.5,
+  "max_loss_per_trade_gbp": 50,
+  "initial_position_size": 0.1,
+  "scale_up_plan": {
+    "phase_1": {
+      "after_trades": 10,
+      "condition": "net_profitable",
+      "position_size": 0.2
+    },
+    "phase_2": {
+      "after_trades": 25,
+      "condition": "net_profitable_and_sharpe_above_1",
+      "position_size": 0.5
+    },
+    "phase_3": {
+      "after_trades": 50,
+      "condition": "net_profitable_and_sharpe_above_1.5",
+      "position_size": 1.0
+    }
+  },
+  "approved_combos": [],
+  "_note": "approved_combos populated after 070-D/E sweep + walk-forward results"
+}

@@ -1,0 +1,19 @@
+{
+  "max_position_size": 1.0,
+  "max_concurrent_positions": 3,
+  "max_daily_loss_pct": 2.0,
+  "max_trades_per_hour": 10,
+  "per_symbol_exposure_cap": 10000,
+  "require_sl": true,
+  "close_on_kill_switch": true,
+
+  "_rationale": {
+    "max_position_size": "1.0 lot max — conservative for initial LIVE deployment",
+    "max_concurrent_positions": "3 positions max — limits correlated exposure",
+    "max_daily_loss_pct": "2% daily loss triggers kill switch — £200 on £10k account",
+    "max_trades_per_hour": "10 trades/hour — prevents runaway execution while allowing normal flow",
+    "per_symbol_exposure_cap": "£10k per symbol — no single symbol exceeds account size",
+    "require_sl": "Mandatory stop-loss on every trade — non-negotiable for LIVE",
+    "close_on_kill_switch": "Auto-close all positions when kill switch fires"
+  }
+}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { StatusScreen } from "./components/StatusScreen";
 import { SplashScreen } from "./components/SplashScreen";
 import { DashboardScreen } from "./screens/DashboardScreen";
@@ -12,6 +12,7 @@ import { OfflineBanner } from "./components/OfflineBanner";
 import { RouteErrorBoundary } from "./components/ErrorBoundary";
 import { StatusStrip } from "./components/StatusStrip";
 import { CommandPalette } from "./components/CommandPalette";
+import { Sidebar } from "./components/Sidebar";
 import { ToastProvider } from "./context/ToastContext";
 import { useEngineHealth } from "./hooks/useEngineHealth";
 import { useEngineLauncher } from "./hooks/useEngineLauncher";
@@ -53,121 +54,94 @@ function AppContent() {
   });
 
   const isTerminal = location.pathname === "/terminal";
-  const isFullScreen = isTerminal;
 
   return (
-    <div className={`app ${isFullScreen ? "terminal-mode" : ""}`}>
-      <header className="app-header">
-        <div className="app-title">
-          <img src="/image_logo.png" alt="SOLAT" className="logo" />
-          <h1>SOLAT</h1>
-          <span className="version">v3.1</span>
-        </div>
+    <div className="app-container">
+      {/* Left Sidebar */}
+      <Sidebar />
 
-        <nav className="app-nav">
-          <Link
-            to="/"
-            className={`nav-link ${location.pathname === "/" ? "active" : ""}`}
-          >
-            Dashboard
-          </Link>
-          <Link
-            to="/terminal"
-            className={`nav-link ${location.pathname === "/terminal" ? "active" : ""}`}
-          >
-            Charts
-          </Link>
-          <Link
-            to="/backtests"
-            className={`nav-link ${location.pathname === "/backtests" ? "active" : ""}`}
-          >
-            Backtests
-          </Link>
-          <Link
-            to="/optimise"
-            className={`nav-link ${location.pathname === "/optimise" ? "active" : ""}`}
-          >
-            Optimise
-          </Link>
-          <Link
-            to="/blotter"
-            className={`nav-link ${location.pathname === "/blotter" ? "active" : ""}`}
-          >
-            Blotter
-          </Link>
-          <Link
-            to="/system"
-            className={`nav-link ${location.pathname === "/system" ? "active" : ""}`}
-          >
-            System
-          </Link>
-        </nav>
+      {/* Main Content Area */}
+      <div className="app-right-col">
+        {/* Header */}
+        <header className="app-header">
+          <div className="app-title-section">
+             <h2 className="section-title">
+               {location.pathname === "/" ? "Dashboard" :
+                location.pathname.slice(1).charAt(0).toUpperCase() + location.pathname.slice(2)}
+             </h2>
+          </div>
 
-        <div className="connection-status">
-          <span
-            className={`status-dot ${
-              isConnected ? "connected" : "disconnected"
-            }`}
+          <div className="header-actions">
+             <button className="icon-btn notification-bell" title="Notifications">
+               🔔
+             </button>
+             <div className="connection-status">
+              <span
+                className={`status-dot ${
+                  isConnected ? "connected" : "disconnected"
+                }`}
+              />
+              <span className="status-text">{connectionStatus}</span>
+              <button
+                className="guide-trigger"
+                onClick={() => setShowGuide(true)}
+                title="Platform Guide"
+              >
+                ?
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Engine offline warning banner */}
+        {connectionState !== "connected" && !isLoading && (
+          <OfflineBanner
+            connectionState={connectionState}
+            error={error}
+            retryCount={retryCount}
+            nextRetryIn={nextRetryIn}
+            onRetry={manualRetry}
+            onStartEngine={startEngine}
+            isStartingEngine={isStartingEngine}
           />
-          <span className="status-text">{connectionStatus}</span>
-          <button
-            className="guide-trigger"
-            onClick={() => setShowGuide(true)}
-            title="Platform Guide"
-          >
-            ?
-          </button>
-        </div>
-      </header>
+        )}
 
-      {/* Engine offline warning banner */}
-      {connectionState !== "connected" && !isLoading && (
-        <OfflineBanner
-          connectionState={connectionState}
-          error={error}
-          retryCount={retryCount}
-          nextRetryIn={nextRetryIn}
-          onRetry={manualRetry}
-          onStartEngine={startEngine}
-          isStartingEngine={isStartingEngine}
-        />
-      )}
+        <main className={`app-main ${isTerminal ? "terminal-main-container" : ""}`}>
+          <Routes>
+            <Route path="/" element={<RouteErrorBoundary><DashboardScreen /></RouteErrorBoundary>} />
+            <Route path="/terminal" element={<RouteErrorBoundary><TerminalScreen /></RouteErrorBoundary>} />
+            <Route path="/backtests" element={<RouteErrorBoundary><BacktestsScreen /></RouteErrorBoundary>} />
+            <Route path="/optimise" element={<RouteErrorBoundary><OptimizationScreen /></RouteErrorBoundary>} />
+            <Route path="/blotter" element={<RouteErrorBoundary><BlotterScreen /></RouteErrorBoundary>} />
+            <Route
+              path="/system"
+              element={
+                <RouteErrorBoundary>
+                  <StatusScreen
+                    health={health}
+                    config={config}
+                    heartbeatCount={heartbeatCount}
+                    isLoading={isLoading}
+                    error={error}
+                    wsConnected={isConnected}
+                    onStartEngine={startEngine}
+                    isStartingEngine={isStartingEngine}
+                  />
+                </RouteErrorBoundary>
+              }
+            />
+          </Routes>
+        </main>
 
-      <main className={`app-main ${isTerminal ? "terminal-main-container" : ""}`}>
-        <Routes>
-          <Route path="/" element={<RouteErrorBoundary><DashboardScreen /></RouteErrorBoundary>} />
-          <Route path="/terminal" element={<RouteErrorBoundary><TerminalScreen /></RouteErrorBoundary>} />
-          <Route path="/backtests" element={<RouteErrorBoundary><BacktestsScreen /></RouteErrorBoundary>} />
-          <Route path="/optimise" element={<RouteErrorBoundary><OptimizationScreen /></RouteErrorBoundary>} />
-          <Route path="/blotter" element={<RouteErrorBoundary><BlotterScreen /></RouteErrorBoundary>} />
-          <Route
-            path="/system"
-            element={
-              <RouteErrorBoundary>
-                <StatusScreen
-                  health={health}
-                  config={config}
-                  heartbeatCount={heartbeatCount}
-                  isLoading={isLoading}
-                  error={error}
-                  wsConnected={isConnected}
-                  onStartEngine={startEngine}
-                  isStartingEngine={isStartingEngine}
-                />
-              </RouteErrorBoundary>
-            }
+        {!isTerminal && (
+          <StatusStrip
+            mode={config?.mode ?? null}
+            engineVersion={health?.version ?? null}
+            isConnected={isConnected}
+            currentPath={location.pathname}
           />
-        </Routes>
-      </main>
-
-      {!isTerminal && (
-        <StatusStrip
-          mode={config?.mode ?? null}
-          engineVersion={health?.version ?? null}
-          isConnected={isConnected}
-          currentPath={location.pathname}
-        />
-      )}
+        )}
+      </div>
 
       {/* Command Palette */}
       {showPalette && (

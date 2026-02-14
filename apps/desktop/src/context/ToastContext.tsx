@@ -1,8 +1,8 @@
 /**
- * Global toast notification system.
+ * Global toast notification system with history.
  *
  * Usage:
- *   const { showToast } = useToast();
+ *   const { showToast, notifications, clearHistory } = useToast();
  *   showToast("Copied 42 rows", "success");
  */
 
@@ -20,14 +20,20 @@ import {
 
 export type ToastType = "info" | "success" | "error" | "warning";
 
-interface Toast {
+export interface Toast {
   id: number;
+  title?: string;
   message: string;
   type: ToastType;
+  timestamp: number;
+  duration?: number;
 }
 
 interface ToastContextValue {
-  showToast: (message: string, type?: ToastType) => void;
+  showToast: (message: string, type?: ToastType, title?: string, duration?: number) => void;
+  dismissToast: (id: number) => void;
+  notifications: Toast[]; // History of all notifications
+  clearHistory: () => void;
 }
 
 // =============================================================================
@@ -37,52 +43,85 @@ interface ToastContextValue {
 const ToastContext = createContext<ToastContextValue | null>(null);
 
 let nextId = 0;
-const TOAST_DURATION_MS = 3000;
-const MAX_TOASTS = 5;
+const DEFAULT_DURATION = 4000;
+const MAX_TOASTS_VISIBLE = 5;
+const MAX_HISTORY = 50;
 
 // =============================================================================
 // Provider
 // =============================================================================
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [activeToasts, setActiveToasts] = useState<Toast[]>([]);
+  const [history, setHistory] = useState<Toast[]>([]);
 
-  const showToast = useCallback((message: string, type: ToastType = "info") => {
-    const id = ++nextId;
-    setToasts((prev) => [...prev.slice(-(MAX_TOASTS - 1)), { id, message, type }]);
+  const showToast = useCallback(
+    (message: string, type: ToastType = "info", title?: string, duration = DEFAULT_DURATION) => {
+      const id = ++nextId;
+      const newToast: Toast = {
+        id,
+        title,
+        message,
+        type,
+        timestamp: Date.now(),
+        duration,
+      };
 
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, TOAST_DURATION_MS);
-  }, []);
+      // Add to active toasts (limit to MAX_TOASTS_VISIBLE)
+      setActiveToasts((prev) => {
+        const updated = [...prev, newToast];
+        if (updated.length > MAX_TOASTS_VISIBLE) {
+          return updated.slice(updated.length - MAX_TOASTS_VISIBLE);
+        }
+        return updated;
+      });
+
+      // Add to history
+      setHistory((prev) => [newToast, ...prev].slice(0, MAX_HISTORY));
+
+      // Auto-dismiss active toast
+      if (duration > 0) {
+        setTimeout(() => {
+          setActiveToasts((prev) => prev.filter((t) => t.id !== id));
+        }, duration);
+      }
+    },
+    []
+  );
 
   const dismissToast = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    setActiveToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const clearHistory = useCallback(() => {
+    setHistory([]);
   }, []);
 
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <ToastContext.Provider value={{ showToast, dismissToast, notifications: history, clearHistory }}>
       {children}
       {/* Toast container — portalled to bottom-right */}
-      {toasts.length > 0 && (
-        <div className="toast-container">
-          {toasts.map((toast) => (
-            <div
-              key={toast.id}
-              className={`toast-item toast-${toast.type}`}
-              onClick={() => dismissToast(toast.id)}
-            >
-              <span className="toast-icon">
-                {toast.type === "success" && "\u2713"}
-                {toast.type === "error" && "\u2717"}
-                {toast.type === "warning" && "\u26A0"}
-                {toast.type === "info" && "\u2139"}
-              </span>
-              <span className="toast-message">{toast.message}</span>
+      <div className="toast-container">
+        {activeToasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`toast-item toast-${toast.type}`}
+            onClick={() => dismissToast(toast.id)}
+          >
+            <div className="toast-icon">
+              {toast.type === "success" && "\u2713"}
+              {toast.type === "error" && "\u2717"}
+              {toast.type === "warning" && "\u26A0"}
+              {toast.type === "info" && "\u2139"}
             </div>
-          ))}
-        </div>
-      )}
+            <div className="toast-content">
+              {toast.title && <div className="toast-title">{toast.title}</div>}
+              <div className="toast-message">{toast.message}</div>
+            </div>
+            <div className="toast-close">×</div>
+          </div>
+        ))}
+      </div>
     </ToastContext.Provider>
   );
 }

@@ -5,6 +5,7 @@
  * - Panel header with symbol/timeframe selectors
  * - CandleChart component with markers, SL/TP, executions
  * - Status line
+ * - Quick Trade buttons (Phase 2)
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -25,6 +26,8 @@ import { useExecutionEvents } from "../../hooks/useExecutionEvents";
 import { useDrawings } from "../../hooks/useDrawings";
 import { Panel, PanelBot, PanelIndicator, TIMEFRAMES, LinkGroup } from "../../lib/workspace";
 import { Drawing, DEFAULT_DRAWING_COLOR } from "../../lib/drawings";
+import { engineClient } from "../../lib/engineClient";
+import { useToast } from "../../context/ToastContext";
 
 // =============================================================================
 // Types
@@ -47,6 +50,7 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
   const { items: catalogueItems } = useCatalogue();
   const { status: marketStatus } = useMarketStatus();
   const { subscribe } = useMarketSubscription();
+  const { showToast } = useToast();
 
   // Local state
   const [showSymbolDropdown, setShowSymbolDropdown] = useState(false);
@@ -55,6 +59,7 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
   const [quote, setQuote] = useState<QuoteUpdateEvent | null>(null);
   const [showStrategyPopover, setShowStrategyPopover] = useState(false);
   const [showIndicatorPopover, setShowIndicatorPopover] = useState(false);
+  const [isTrading, setIsTrading] = useState(false);
 
   // Data hooks
   const {
@@ -236,6 +241,33 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
   const toggleExecutions = useCallback(() => {
     updatePanel(panel.id, { showExecutions: !(panel.showExecutions !== false) });
   }, [panel.id, panel.showExecutions, updatePanel]);
+
+  // Quick Trade Handler
+  const handleQuickTrade = useCallback(
+    async (direction: "BUY" | "SELL") => {
+      if (isTrading) return;
+      setIsTrading(true);
+      try {
+        const size = 1; // Default quick trade size
+        showToast(`Placing ${direction} order for ${size} ${panel.symbol}...`, "info");
+        const res = await engineClient.placeOrder({
+          symbol: panel.symbol,
+          direction,
+          size,
+          type: "MARKET",
+          reason: "quick_trade_chart"
+        });
+        if (res.order_id) {
+           showToast(`Order Placed: ${direction} ${panel.symbol}`, "success");
+        }
+      } catch (err) {
+        showToast(`Trade Failed: ${err instanceof Error ? err.message : String(err)}`, "error");
+      } finally {
+        setIsTrading(false);
+      }
+    },
+    [panel.symbol, isTrading, showToast]
+  );
 
   // Drawing completion handler
   const handleDrawingComplete = useCallback(
@@ -426,18 +458,37 @@ export function ChartPanel({ panel, index: _index, isOnlyPanel = false }: ChartP
             </div>
           </div>
         ) : (
-          <CandleChart
-            bars={bars}
-            overlays={overlays}
-            signals={panel.showMarkers ? signals : []}
-            executions={showExec ? executions : []}
-            slTpLevels={showSlTp ? slTpLevels : []}
-            drawings={chartDrawings}
-            activeTool={activeTool}
-            onDrawingComplete={handleDrawingComplete}
-            onContextMenu={handleChartContextMenu}
-            height={undefined}
-          />
+          <>
+            <CandleChart
+              bars={bars}
+              overlays={overlays}
+              signals={panel.showMarkers ? signals : []}
+              executions={showExec ? executions : []}
+              slTpLevels={showSlTp ? slTpLevels : []}
+              drawings={chartDrawings}
+              activeTool={activeTool}
+              onDrawingComplete={handleDrawingComplete}
+              onContextMenu={handleChartContextMenu}
+              height={undefined}
+            />
+            {/* Quick Trade Overlay */}
+            <div className="chart-trade-overlay">
+               <button 
+                 className="trade-btn sell" 
+                 onClick={() => handleQuickTrade("SELL")}
+                 disabled={isTrading}
+               >
+                 SELL
+               </button>
+               <button 
+                 className="trade-btn buy" 
+                 onClick={() => handleQuickTrade("BUY")}
+                 disabled={isTrading}
+               >
+                 BUY
+               </button>
+            </div>
+          </>
         )}
       </div>
 

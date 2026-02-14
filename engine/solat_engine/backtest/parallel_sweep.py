@@ -103,6 +103,16 @@ class ComboResult:
     duration_s: float = 0.0
     skipped: bool = False
     skip_reason: str | None = None
+    # Extended fields
+    calmar: float = 0.0
+    expectancy: float = 0.0
+    payoff_ratio: float = 0.0
+    total_return_pct: float = 0.0
+    volatility: float = 0.0
+    time_in_market_pct: float = 0.0
+    max_consecutive_wins: int = 0
+    max_consecutive_losses: int = 0
+    total_transaction_costs: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -123,6 +133,15 @@ class ComboResult:
             "duration_s": self.duration_s,
             "skipped": self.skipped,
             "skip_reason": self.skip_reason,
+            "calmar": self.calmar,
+            "expectancy": self.expectancy,
+            "payoff_ratio": self.payoff_ratio,
+            "total_return_pct": self.total_return_pct,
+            "volatility": self.volatility,
+            "time_in_market_pct": self.time_in_market_pct,
+            "max_consecutive_wins": self.max_consecutive_wins,
+            "max_consecutive_losses": self.max_consecutive_losses,
+            "total_transaction_costs": self.total_transaction_costs,
         }
 
     @classmethod
@@ -145,6 +164,15 @@ class ComboResult:
             duration_s=d.get("duration_s", 0.0),
             skipped=d.get("skipped", False),
             skip_reason=d.get("skip_reason"),
+            calmar=d.get("calmar", 0.0),
+            expectancy=d.get("expectancy", 0.0),
+            payoff_ratio=d.get("payoff_ratio", 0.0),
+            total_return_pct=d.get("total_return_pct", 0.0),
+            volatility=d.get("volatility", 0.0),
+            time_in_market_pct=d.get("time_in_market_pct", 0.0),
+            max_consecutive_wins=d.get("max_consecutive_wins", 0),
+            max_consecutive_losses=d.get("max_consecutive_losses", 0),
+            total_transaction_costs=d.get("total_transaction_costs", 0.0),
         )
 
 
@@ -187,20 +215,39 @@ def _run_single_combo(args: tuple[Any, ...]) -> ComboResult:
 
     This function runs in a separate process and must not share state.
     """
-    (
-        combo_id,
-        bot,
-        symbol,
-        timeframe,
-        start_iso,
-        end_iso,
-        initial_cash,
-        data_dir_str,
-        spread_dict,
-        slippage_dict,
-        fees_dict,
-        risk_dict,
-    ) = args
+    # Support both 12-element (legacy) and 13-element (with params_dict) tuples
+    if len(args) == 13:
+        (
+            combo_id,
+            bot,
+            symbol,
+            timeframe,
+            start_iso,
+            end_iso,
+            initial_cash,
+            data_dir_str,
+            spread_dict,
+            slippage_dict,
+            fees_dict,
+            risk_dict,
+            params_dict,
+        ) = args
+    else:
+        (
+            combo_id,
+            bot,
+            symbol,
+            timeframe,
+            start_iso,
+            end_iso,
+            initial_cash,
+            data_dir_str,
+            spread_dict,
+            slippage_dict,
+            fees_dict,
+            risk_dict,
+        ) = args
+        params_dict = None
 
     start_time = time.time()
 
@@ -237,6 +284,7 @@ def _run_single_combo(args: tuple[Any, ...]) -> ComboResult:
             slippage=SlippageConfig(**slippage_dict) if slippage_dict else SlippageConfig(),
             fees=FeeConfig(**fees_dict) if fees_dict else FeeConfig(),
             risk=RiskConfig(**risk_dict) if risk_dict else RiskConfig(),
+            params_override={bot: params_dict} if params_dict else None,
         )
 
         # Run backtest
@@ -266,6 +314,15 @@ def _run_single_combo(args: tuple[Any, ...]) -> ComboResult:
                 profit_factor=m.profit_factor or 0.0,
                 avg_trade_pnl=m.avg_trade_pnl or 0.0,
                 duration_s=duration,
+                calmar=m.calmar_ratio or 0.0,
+                expectancy=m.expectancy or 0.0,
+                payoff_ratio=m.payoff_ratio or 0.0,
+                total_return_pct=m.total_return_pct or 0.0,
+                volatility=m.volatility or 0.0,
+                time_in_market_pct=m.time_in_market_pct or 0.0,
+                max_consecutive_wins=m.max_consecutive_wins,
+                max_consecutive_losses=m.max_consecutive_losses,
+                total_transaction_costs=m.total_transaction_costs or 0.0,
             )
         else:
             return ComboResult(
@@ -368,6 +425,7 @@ class ParallelSweepRunner:
         fail_fast: bool = False,
         max_combos: int | None = None,
         min_trades: int = 0,
+        params_overrides: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """
         Run parallel sweep.
@@ -476,6 +534,7 @@ class ParallelSweepRunner:
             combo_id = compute_combo_id(bot, symbol, tf, start, end)
             if combo_id in completed_combo_ids:
                 continue
+            bot_params = params_overrides.get(bot) if params_overrides else None
             work_items.append((
                 combo_id,
                 bot,
@@ -489,6 +548,7 @@ class ParallelSweepRunner:
                 slippage_dict,
                 fees_dict,
                 risk_dict,
+                bot_params,
             ))
 
         pending_count = len(work_items)

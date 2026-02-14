@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+#
+# SOLAT pre-commit hook: enforce project memory updates.
+#
+# If any "code" files are staged, at least one of the log files
+# (PROJECT_MEMORY.md or BUILD_LOG.md) must also be staged.
+#
+# Install with: bash scripts/install_githooks.sh
+# Skip with:    git commit --no-verify  (use sparingly)
+
+set -euo pipefail
+
+STAGED=$(git diff --cached --name-only 2>/dev/null || true)
+
+if [ -z "$STAGED" ]; then
+    exit 0
+fi
+
+# Patterns that count as "code changes"
+CODE_PATTERN="^(engine/|apps/|scripts/|\.github/|Cargo\.toml|package\.json|pnpm-lock\.yaml|pyproject\.toml|uv\.lock|requirements)"
+
+# Check if any code files are staged
+HAS_CODE=$(echo "$STAGED" | grep -E "$CODE_PATTERN" || true)
+
+# Check if log files are staged
+HAS_LOG=$(echo "$STAGED" | grep -E "(docs/ops/PROJECT_MEMORY\.md|docs/BUILD_LOG\.md)" || true)
+
+if [ -n "$HAS_CODE" ] && [ -z "$HAS_LOG" ]; then
+    echo ""
+    echo "=========================================="
+    echo "  PRE-COMMIT HOOK: Log update required"
+    echo "=========================================="
+    echo ""
+    echo "You are committing code changes without updating the project logs."
+    echo ""
+    echo "Staged code files:"
+    echo "$HAS_CODE" | head -10 | sed 's/^/  - /'
+    TOTAL=$(echo "$HAS_CODE" | wc -l | tr -d ' ')
+    if [ "$TOTAL" -gt 10 ]; then
+        echo "  ... and $((TOTAL - 10)) more"
+    fi
+    echo ""
+    echo "Fix: Update the logs before committing:"
+    echo ""
+    echo "  python3 scripts/update_project_memory.py \\"
+    echo "    --title 'Your change title' \\"
+    echo "    --summary 'What you changed'"
+    echo ""
+    echo "  git add docs/ops/PROJECT_MEMORY.md docs/BUILD_LOG.md"
+    echo ""
+    echo "Or skip this check with: git commit --no-verify"
+    echo ""
+    exit 1
+fi

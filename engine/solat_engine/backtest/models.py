@@ -120,6 +120,10 @@ class BacktestRequest(BaseModel):
     fees: FeeConfig = Field(default_factory=FeeConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
     warmup_bars: int = Field(default=100, ge=10, le=1000, description="Warmup period")
+    params_override: dict[str, Any] | None = Field(
+        default=None,
+        description="Bot name -> params dict for strategy param injection",
+    )
 
 
 # =============================================================================
@@ -181,26 +185,25 @@ class OrderRecord(BaseModel):
 class MetricsSummary(BaseModel):
     """Performance metrics summary."""
 
-    # Identification
+    # =========================================================================
+    # A. Run Metadata
+    # =========================================================================
     bot: str | None = None
     symbol: str | None = None
+    run_id: str | None = None
+    timestamp: datetime | None = None
+    timeframe: str | None = None
+    data_start: datetime | None = None
+    data_end: datetime | None = None
+    bar_count: int = 0
+    initial_cash: float = 0.0
+    commission_model: str = "flat"
+    spread_model: str = "fixed"
+    slippage_model: str = "fixed"
 
-    # Returns
-    total_return: float = 0.0
-    total_return_pct: float = 0.0
-    annualized_return: float = 0.0
-    cagr: float = 0.0
-
-    # Risk
-    sharpe_ratio: float = 0.0
-    sortino_ratio: float = 0.0
-    calmar_ratio: float = 0.0
-    max_drawdown: float = 0.0
-    max_drawdown_pct: float = 0.0
-    max_drawdown_duration_bars: int = 0
-    volatility: float = 0.0
-
-    # Trading
+    # =========================================================================
+    # B. Trade Summary
+    # =========================================================================
     total_trades: int = 0
     winning_trades: int = 0
     losing_trades: int = 0
@@ -209,15 +212,79 @@ class MetricsSummary(BaseModel):
     expectancy: float = 0.0
     avg_win: float = 0.0
     avg_loss: float = 0.0
-    avg_trade_pnl: float = 0.0  # Average PnL per trade (total_pnl / total_trades)
+    avg_trade_pnl: float = 0.0
     largest_win: float = 0.0
     largest_loss: float = 0.0
     avg_bars_held: float = 0.0
+    median_trade_return_pct: float = 0.0
+    max_consecutive_wins: int = 0
+    max_consecutive_losses: int = 0
+    long_trades: int = 0
+    short_trades: int = 0
+    median_bars_held: float = 0.0
+    payoff_ratio: float = 0.0
 
-    # Exposure
+    # =========================================================================
+    # C. Equity / Performance
+    # =========================================================================
+    total_return: float = 0.0
+    total_return_pct: float = 0.0
+    annualized_return: float = 0.0
+    cagr: float = 0.0
+    sharpe_ratio: float = 0.0
+    sortino_ratio: float = 0.0
+    calmar_ratio: float = 0.0
+    max_drawdown: float = 0.0
+    max_drawdown_pct: float = 0.0
+    max_drawdown_duration_bars: int = 0
+    volatility: float = 0.0
+    start_equity: float = 0.0
+    end_equity: float = 0.0
+    downside_volatility: float = 0.0
+    avg_drawdown_pct: float = 0.0
+    avg_drawdown_duration_bars: float = 0.0
+
+    # =========================================================================
+    # D. Risk / Distribution
+    # =========================================================================
+    skewness: float = 0.0
+    kurtosis: float = 0.0
+    exposure_adjusted_return: float = 0.0
+
+    # =========================================================================
+    # E. Execution Realism
+    # =========================================================================
+    total_orders: int = 0
+    filled_orders: int = 0
+    rejected_orders: int = 0
+    partial_fills_count: int = 0
+    avg_spread_paid: float = 0.0
+    avg_slippage: float = 0.0
+    total_spread_cost: float = 0.0
+    total_slippage_cost: float = 0.0
+    total_fees: float = 0.0
+    total_transaction_costs: float = 0.0
+
+    # =========================================================================
+    # F. Diagnostics / Integrity
+    # =========================================================================
+    data_gaps_detected: int = 0
+    nan_inf_checks_passed: bool = True
+    warnings_count: int = 0
+
+    # Exposure (legacy)
     avg_exposure: float = 0.0
     max_exposure: float = 0.0
     time_in_market_pct: float = 0.0
+
+    # =========================================================================
+    # G. Extended (for tuning pipeline)
+    # =========================================================================
+    trades_per_day: float = 0.0
+    equity_peak: float = 0.0
+    best_5_trades_pnl: list[float] = Field(default_factory=list)
+    worst_5_trades_pnl: list[float] = Field(default_factory=list)
+    missing_bar_pct: float = 0.0
 
 
 class BotResult(BaseModel):

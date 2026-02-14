@@ -127,7 +127,17 @@ class BacktestEngineV1:
         # Load strategies
         for bot_name in request.bots:
             try:
-                strategy = Elite8StrategyFactory.create(bot_name, warmup_bars=request.warmup_bars)
+                bot_params = None
+                if request.params_override and bot_name in request.params_override:
+                    raw = request.params_override[bot_name]
+                    if isinstance(raw, dict):
+                        from solat_engine.optimization.search_space import dict_to_params
+                        bot_params = dict_to_params(bot_name, raw)
+                    else:
+                        bot_params = raw  # Already a dataclass
+                strategy = Elite8StrategyFactory.create(
+                    bot_name, warmup_bars=request.warmup_bars, params=bot_params
+                )
                 self._strategies[bot_name] = strategy
             except ValueError as e:
                 self._warnings.append(f"Failed to load bot {bot_name}: {e}")
@@ -180,13 +190,20 @@ class BacktestEngineV1:
             )
 
         # Compute per-bot results
-        per_bot_results = self._compute_per_bot_results(request)
+        per_bot_results = self._compute_per_bot_results(request, run_id)
 
         # Compute combined metrics
         combined_metrics = compute_metrics_summary(
             equity_curve=self._portfolio.equity_curve,
             trades=self._all_trades,
             initial_cash=request.initial_cash,
+            orders=self._all_orders,
+            fill_summary=self._broker.get_fill_summary(),
+            run_id=run_id,
+            timeframe=request.timeframe,
+            data_start=request.start,
+            data_end=request.end,
+            warnings_count=len(self._warnings),
         )
 
         # Write artefacts
@@ -452,7 +469,7 @@ class BacktestEngineV1:
                     take_profit=signal.take_profit,
                 )
 
-    def _compute_per_bot_results(self, request: BacktestRequest) -> list[BotResult]:
+    def _compute_per_bot_results(self, request: BacktestRequest, run_id: str | None = None) -> list[BotResult]:
         """Compute results per bot."""
         assert self._portfolio is not None
 
@@ -472,6 +489,12 @@ class BacktestEngineV1:
                 trades=bot_trades,
                 initial_cash=request.initial_cash,
                 bot=bot_name,
+                orders=bot_orders,
+                fill_summary=self._broker.get_fill_summary(),
+                run_id=run_id,
+                timeframe=request.timeframe,
+                data_start=request.start,
+                data_end=request.end,
             )
 
             results.append(BotResult(

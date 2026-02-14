@@ -1,0 +1,49 @@
+name: Log Guard
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  check-logs:
+    name: Enforce Project Memory Updates
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Need HEAD~1 for diff
+
+      - name: Check log updates
+        run: |
+          # Get changed files
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          else
+            CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only HEAD)
+          fi
+
+          if [ -z "$CHANGED" ]; then
+            echo "No changed files detected. OK."
+            exit 0
+          fi
+
+          # Patterns that count as "code changes"
+          CODE_PATTERN="^(engine/|apps/|scripts/|\.github/|Cargo\.toml|package\.json|pnpm-lock\.yaml|pyproject\.toml|uv\.lock|requirements)"
+
+          HAS_CODE=$(echo "$CHANGED" | grep -E "$CODE_PATTERN" || true)
+          HAS_LOG=$(echo "$CHANGED" | grep -E "(docs/ops/PROJECT_MEMORY\.md|docs/BUILD_LOG\.md)" || true)
+
+          if [ -n "$HAS_CODE" ] && [ -z "$HAS_LOG" ]; then
+            echo "::error::Code files changed without updating project logs (docs/ops/PROJECT_MEMORY.md or docs/BUILD_LOG.md)"
+            echo ""
+            echo "Changed code files:"
+            echo "$HAS_CODE" | head -20 | sed 's/^/  - /'
+            echo ""
+            echo "Fix: Run 'python3 scripts/update_project_memory.py --title ...' and commit the log files."
+            exit 1
+          fi
+
+          echo "Log files are up to date. OK."

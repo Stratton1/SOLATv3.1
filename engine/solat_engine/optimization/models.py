@@ -143,10 +143,20 @@ class AllowlistEntry(BaseModel):
     enabled: bool = True
     reason: str | None = None
 
+    # Variant / scoring (backward-compatible defaults)
+    variant_id: str = "baseline"
+    params_override: dict[str, Any] = Field(default_factory=dict)
+    score_total: float = 0.0
+    score_breakdown: dict[str, float] = Field(default_factory=dict)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
     @property
     def combo_id(self) -> str:
-        """Unique identifier for this combo."""
-        return f"{self.symbol}:{self.bot}:{self.timeframe}"
+        """Unique identifier for this combo (includes variant if not baseline)."""
+        base = f"{self.symbol}:{self.bot}:{self.timeframe}"
+        if self.variant_id != "baseline":
+            return f"{base}:{self.variant_id}"
+        return base
 
 
 class AllowlistConfig(BaseModel):

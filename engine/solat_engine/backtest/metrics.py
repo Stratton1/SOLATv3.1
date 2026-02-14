@@ -2,12 +2,22 @@
 Performance metrics calculation for backtesting.
 
 Computes Sharpe, Sortino, Calmar, max drawdown, win rate, etc.
+Comprehensive A-F metrics output: Metadata, Trade, Equity, Distribution, Execution, Diagnostics.
 """
 
 import math
+import statistics
 from collections.abc import Sequence
+from datetime import datetime
+from typing import Any
 
-from solat_engine.backtest.models import EquityPoint, MetricsSummary, TradeRecord
+from solat_engine.backtest.models import (
+    EquityPoint,
+    MetricsSummary,
+    OrderRecord,
+    PositionSide,
+    TradeRecord,
+)
 from solat_engine.logging import get_logger
 
 logger = get_logger(__name__)
@@ -249,6 +259,167 @@ def calculate_exposure_metrics(
     }
 
 
+def calculate_consecutive_streaks(
+    trades: Sequence[TradeRecord],
+) -> tuple[int, int]:
+    """Calculate max consecutive wins and losses."""
+    if not trades:
+        return 0, 0
+
+    max_wins = 0
+    max_losses = 0
+    current_wins = 0
+    current_losses = 0
+
+    for t in trades:
+        if t.pnl > 0:
+            current_wins += 1
+            current_losses = 0
+            max_wins = max(max_wins, current_wins)
+        elif t.pnl < 0:
+            current_losses += 1
+            current_wins = 0
+            max_losses = max(max_losses, current_losses)
+        else:
+            current_wins = 0
+            current_losses = 0
+
+    return max_wins, max_losses
+
+
+def calculate_median_return_pct(trades: Sequence[TradeRecord]) -> float:
+    """Calculate median trade return percentage."""
+    if not trades:
+        return 0.0
+    pct_returns = [t.pnl_pct for t in trades]
+    return statistics.median(pct_returns)
+
+
+def calculate_median_bars_held(trades: Sequence[TradeRecord]) -> float:
+    """Calculate median bars held across trades."""
+    if not trades:
+        return 0.0
+    bars = [t.bars_held for t in trades]
+    return float(statistics.median(bars))
+
+
+def calculate_distribution_stats(returns: Sequence[float]) -> tuple[float, float]:
+    """
+    Calculate skewness and excess kurtosis using Fisher's formulas (no scipy).
+
+    Returns (skewness, excess_kurtosis).
+    """
+    n = len(returns)
+    if n < 3:
+        return 0.0, 0.0
+
+    mean = sum(returns) / n
+    m2 = sum((r - mean) ** 2 for r in returns) / n
+    m3 = sum((r - mean) ** 3 for r in returns) / n
+    m4 = sum((r - mean) ** 4 for r in returns) / n
+
+    if m2 <= 0:
+        return 0.0, 0.0
+
+    skewness = m3 / (m2 ** 1.5)
+    kurtosis = (m4 / (m2 ** 2)) - 3.0  # Excess kurtosis
+
+    return skewness, kurtosis
+
+
+def calculate_downside_volatility(
+    returns: Sequence[float],
+    periods_per_year: int = BARS_PER_YEAR_1M,
+) -> float:
+    """Calculate annualized downside volatility (semi-deviation below 0)."""
+    if len(returns) < 2:
+        return 0.0
+
+    downside = [min(r, 0.0) for r in returns]
+    variance = sum(d ** 2 for d in downside) / len(downside)
+    return math.sqrt(variance * periods_per_year) if variance > 0 else 0.0
+
+
+def calculate_avg_drawdown_metrics(
+    equity_curve: Sequence[EquityPoint],
+) -> tuple[float, float]:
+    """
+    Calculate average drawdown percentage and average drawdown duration (in bars).
+
+    Returns (avg_drawdown_pct, avg_drawdown_duration_bars).
+    """
+    if len(equity_curve) < 2:
+        return 0.0, 0.0
+
+    drawdowns: list[float] = []
+    durations: list[int] = []
+    current_duration = 0
+    current_dd_pcts: list[float] = []
+    high_water_mark = equity_curve[0].equity
+
+    for point in equity_curve:
+        if point.equity >= high_water_mark:
+            # Exited drawdown — record if we had one
+            if current_duration > 0 and current_dd_pcts:
+                drawdowns.append(max(current_dd_pcts))
+                durations.append(current_duration)
+            high_water_mark = point.equity
+            current_duration = 0
+            current_dd_pcts = []
+        else:
+            current_duration += 1
+            dd_pct = (high_water_mark - point.equity) / high_water_mark if high_water_mark > 0 else 0.0
+            current_dd_pcts.append(dd_pct)
+
+    # Capture trailing drawdown
+    if current_duration > 0 and current_dd_pcts:
+        drawdowns.append(max(current_dd_pcts))
+        durations.append(current_duration)
+
+    if not drawdowns:
+        return 0.0, 0.0
+
+    avg_dd_pct = sum(drawdowns) / len(drawdowns)
+    avg_dd_duration = sum(durations) / len(durations)
+    return avg_dd_pct, avg_dd_duration
+
+
+def calculate_execution_metrics(
+    orders: Sequence[OrderRecord] | None = None,
+    fill_summary: dict[str, Any] | None = None,
+) -> dict[str, float | int]:
+    """Calculate execution realism metrics from orders and fill summary."""
+    result: dict[str, float | int] = {
+        "total_orders": 0,
+        "filled_orders": 0,
+        "rejected_orders": 0,
+        "partial_fills_count": 0,
+        "avg_spread_paid": 0.0,
+        "avg_slippage": 0.0,
+        "total_spread_cost": 0.0,
+        "total_slippage_cost": 0.0,
+        "total_fees": 0.0,
+        "total_transaction_costs": 0.0,
+    }
+
+    if fill_summary:
+        result["total_orders"] = fill_summary.get("total_orders", 0)
+        result["filled_orders"] = fill_summary.get("filled_orders", 0)
+        result["rejected_orders"] = fill_summary.get("rejected_orders", 0)
+        result["total_spread_cost"] = fill_summary.get("total_spread_cost", 0.0)
+        result["total_slippage_cost"] = fill_summary.get("total_slippage_cost", 0.0)
+        result["total_fees"] = fill_summary.get("total_fees", 0.0)
+        result["total_transaction_costs"] = fill_summary.get("total_transaction_costs", 0.0)
+
+    if orders:
+        filled = [o for o in orders if o.price_filled is not None]
+        if filled:
+            result["avg_spread_paid"] = sum(o.spread_applied for o in filled) / len(filled)
+            result["avg_slippage"] = sum(o.slippage_applied for o in filled) / len(filled)
+
+    return result
+
+
 def compute_metrics_summary(
     equity_curve: Sequence[EquityPoint],
     trades: Sequence[TradeRecord],
@@ -256,9 +427,18 @@ def compute_metrics_summary(
     bot: str | None = None,
     symbol: str | None = None,
     bars_per_day: int = BARS_PER_DAY_1M,
+    # Optional params for extended A-F metrics (backward-compatible)
+    orders: Sequence[OrderRecord] | None = None,
+    fill_summary: dict[str, Any] | None = None,
+    run_id: str | None = None,
+    timeframe: str | None = None,
+    data_start: datetime | None = None,
+    data_end: datetime | None = None,
+    warnings_count: int = 0,
+    data_gaps_detected: int = 0,
 ) -> MetricsSummary:
     """
-    Compute complete metrics summary.
+    Compute complete metrics summary (A-F categories).
 
     Args:
         equity_curve: Sequence of equity points
@@ -267,6 +447,14 @@ def compute_metrics_summary(
         bot: Optional bot identifier
         symbol: Optional symbol filter
         bars_per_day: Number of bars per trading day (for annualization)
+        orders: Optional sequence of order records (for execution metrics)
+        fill_summary: Optional dict from BrokerSim.get_fill_summary()
+        run_id: Optional run identifier
+        timeframe: Optional timeframe string
+        data_start: Optional data start datetime
+        data_end: Optional data end datetime
+        warnings_count: Number of warnings generated
+        data_gaps_detected: Number of data gaps found
 
     Returns:
         MetricsSummary with all computed metrics
@@ -300,32 +488,67 @@ def compute_metrics_summary(
     sortino = calculate_sortino_ratio(returns, periods_per_year=bars_per_year)
     max_dd, max_dd_pct, max_dd_duration = calculate_max_drawdown(equity_curve)
     calmar = calculate_calmar_ratio(total_return_pct, max_dd_pct, years)
-    volatility = calculate_volatility(returns, periods_per_year=bars_per_year)
+    vol = calculate_volatility(returns, periods_per_year=bars_per_year)
 
     # Trade metrics
     trade_metrics = calculate_trade_metrics(filtered_trades)
 
-    # Time in market (approximation: bars with open positions)
-    # This would need position tracking per bar for accuracy
+    # Time in market
     time_in_market = 0.0
     if filtered_trades and equity_curve:
         total_bars_held = sum(t.bars_held for t in filtered_trades)
         time_in_market = total_bars_held / num_bars if num_bars > 0 else 0.0
 
+    # --- B. Extended trade metrics ---
+    max_wins, max_losses = calculate_consecutive_streaks(filtered_trades)
+    median_return_pct = calculate_median_return_pct(filtered_trades)
+    median_bh = calculate_median_bars_held(filtered_trades)
+    long_count = sum(1 for t in filtered_trades if t.side == PositionSide.LONG)
+    short_count = sum(1 for t in filtered_trades if t.side == PositionSide.SHORT)
+    avg_win_val = trade_metrics["avg_win"]
+    avg_loss_val = trade_metrics["avg_loss"]
+    payoff_ratio = avg_win_val / avg_loss_val if avg_loss_val > 0 else 0.0
+
+    # --- C. Extended equity metrics ---
+    start_eq = equity_curve[0].equity if equity_curve else initial_cash
+    end_eq = final_equity
+    downside_vol = calculate_downside_volatility(returns, periods_per_year=bars_per_year)
+    avg_dd_pct, avg_dd_dur = calculate_avg_drawdown_metrics(equity_curve)
+
+    # --- D. Distribution metrics ---
+    skew, kurt = calculate_distribution_stats(returns)
+    exposure_adjusted = total_return_pct / time_in_market if time_in_market > 0 else 0.0
+
+    # --- E. Execution metrics ---
+    exec_metrics = calculate_execution_metrics(orders, fill_summary)
+
+    # --- F. Diagnostics ---
+    nan_inf_ok = True
+    for r in returns:
+        if math.isnan(r) or math.isinf(r):
+            nan_inf_ok = False
+            break
+
+    # --- G. Extended metrics for tuning pipeline ---
+    trading_days = years * 252
+    trades_per_day = trade_metrics["total_trades"] / max(trading_days, 1.0)
+    equity_peak = max((p.equity for p in equity_curve), default=initial_cash)
+    pnls_sorted = sorted((t.pnl for t in filtered_trades))
+    best_5 = pnls_sorted[-5:] if len(pnls_sorted) >= 5 else pnls_sorted[:]
+    worst_5 = pnls_sorted[:5] if len(pnls_sorted) >= 5 else pnls_sorted[:]
+
     return MetricsSummary(
+        # A. Metadata
         bot=bot,
         symbol=symbol,
-        total_return=total_return,
-        total_return_pct=total_return_pct,
-        annualized_return=cagr,
-        cagr=cagr,
-        sharpe_ratio=sharpe,
-        sortino_ratio=sortino,
-        calmar_ratio=calmar,
-        max_drawdown=max_dd,
-        max_drawdown_pct=max_dd_pct,
-        max_drawdown_duration_bars=max_dd_duration,
-        volatility=volatility,
+        run_id=run_id,
+        timestamp=data_end,
+        timeframe=timeframe,
+        data_start=data_start,
+        data_end=data_end,
+        bar_count=num_bars,
+        initial_cash=initial_cash,
+        # B. Trade
         total_trades=trade_metrics["total_trades"],
         winning_trades=trade_metrics["winning_trades"],
         losing_trades=trade_metrics["losing_trades"],
@@ -338,5 +561,54 @@ def compute_metrics_summary(
         largest_win=trade_metrics["largest_win"],
         largest_loss=trade_metrics["largest_loss"],
         avg_bars_held=trade_metrics["avg_bars_held"],
+        median_trade_return_pct=median_return_pct,
+        max_consecutive_wins=max_wins,
+        max_consecutive_losses=max_losses,
+        long_trades=long_count,
+        short_trades=short_count,
+        median_bars_held=median_bh,
+        payoff_ratio=payoff_ratio,
+        # C. Equity / Performance
+        total_return=total_return,
+        total_return_pct=total_return_pct,
+        annualized_return=cagr,
+        cagr=cagr,
+        sharpe_ratio=sharpe,
+        sortino_ratio=sortino,
+        calmar_ratio=calmar,
+        max_drawdown=max_dd,
+        max_drawdown_pct=max_dd_pct,
+        max_drawdown_duration_bars=max_dd_duration,
+        volatility=vol,
+        start_equity=start_eq,
+        end_equity=end_eq,
+        downside_volatility=downside_vol,
+        avg_drawdown_pct=avg_dd_pct,
+        avg_drawdown_duration_bars=avg_dd_dur,
+        # D. Distribution
+        skewness=skew,
+        kurtosis=kurt,
+        exposure_adjusted_return=exposure_adjusted,
+        # E. Execution
+        total_orders=int(exec_metrics["total_orders"]),
+        filled_orders=int(exec_metrics["filled_orders"]),
+        rejected_orders=int(exec_metrics["rejected_orders"]),
+        partial_fills_count=int(exec_metrics["partial_fills_count"]),
+        avg_spread_paid=float(exec_metrics["avg_spread_paid"]),
+        avg_slippage=float(exec_metrics["avg_slippage"]),
+        total_spread_cost=float(exec_metrics["total_spread_cost"]),
+        total_slippage_cost=float(exec_metrics["total_slippage_cost"]),
+        total_fees=float(exec_metrics["total_fees"]),
+        total_transaction_costs=float(exec_metrics["total_transaction_costs"]),
+        # F. Diagnostics
+        data_gaps_detected=data_gaps_detected,
+        nan_inf_checks_passed=nan_inf_ok,
+        warnings_count=warnings_count,
+        # Exposure
         time_in_market_pct=time_in_market,
+        # G. Extended
+        trades_per_day=trades_per_day,
+        equity_peak=equity_peak,
+        best_5_trades_pnl=best_5,
+        worst_5_trades_pnl=worst_5,
     )

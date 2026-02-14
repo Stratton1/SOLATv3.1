@@ -35,6 +35,9 @@
     "version:minor": "python3 scripts/bump_version.py minor",
     "version:major": "python3 scripts/bump_version.py major",
     "clean": "rm -rf apps/desktop/dist apps/desktop/src-tauri/target",
+    "reset:sweeps": "cd engine && python3 scripts/reset_sweep_artefacts.py --mode archive --yes",
+    "reset:sweeps:dry": "cd engine && python3 scripts/reset_sweep_artefacts.py --dry-run",
+    "reset:sweeps:full": "cd engine && python3 scripts/reset_sweep_artefacts.py --mode archive --yes --include-tuning --include-portfolio --include-docs",
     "release": "pnpm run lint:all && pnpm run test:all && pnpm run build:all"
   },
   "packageManager": "pnpm@9.0.0",

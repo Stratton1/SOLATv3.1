@@ -154,10 +154,19 @@ def print_summary(results_csv: Path, min_trades: int, include_aggregates: bool =
             top = successful[successful["total_trades"] >= min_trades].nlargest(20, "sharpe")
             if len(top) > 0:
                 print(f"\nTOP 20 BY SHARPE (min {min_trades} trades):")
-                cols = ["bot", "symbol", "timeframe", "total_trades", "sharpe", "win_rate",
-                        "max_drawdown", "pnl"]
+                cols = [
+                    "bot", "symbol", "timeframe", "total_trades", "sharpe",
+                    "sortino", "calmar", "win_rate", "profit_factor",
+                    "max_drawdown", "total_return_pct", "expectancy",
+                    "payoff_ratio", "volatility", "total_transaction_costs", "pnl",
+                ]
                 available = [c for c in cols if c in top.columns]
-                print(top[available].to_string(index=False))
+                # Format float columns for readability
+                fmt = top[available].copy()
+                for col in available:
+                    if col in fmt.columns and fmt[col].dtype == "float64":
+                        fmt[col] = fmt[col].round(4)
+                print(fmt.to_string(index=False))
 
             qualified = successful[successful["total_trades"] >= min_trades]
 

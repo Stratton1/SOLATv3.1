@@ -4,6 +4,58 @@ Chronological record of major implementation prompts.
 
 ---
 
+## Project Memory + Sweep Reset Utility
+
+**Date**: 2026-02-14
+**Tests**: 819 passing (no changes to engine code)
+
+### Summary
+
+Established an enforced project memory logging system and a safe sweep artefact reset utility. Created `docs/ops/PROJECT_MEMORY.md` as the canonical reverse-chronological log, `scripts/update_project_memory.py` as the entry helper, pre-commit hook + CI guard for enforcement, and `engine/scripts/reset_sweep_artefacts.py` for safely archiving old sweep/tuning/portfolio artefacts before a fresh Grand Sweep.
+
+### New Files
+
+- `docs/ops/PROJECT_MEMORY.md` — reverse-chronological project log with current state snapshot
+- `scripts/update_project_memory.py` — stdlib-only helper to prepend entries to both log files
+- `.githooks/pre-commit` — blocks commits changing code without log updates
+- `scripts/install_githooks.sh` — configures git hooks path
+- `.github/workflows/log_guard.yml` — CI guard for PRs/pushes
+- `engine/scripts/reset_sweep_artefacts.py` — archive/delete utility for sweep artefacts
+- `engine/docs/ops/RESET_SWEEP_ARTEFACTS.md` — reset procedure documentation
+
+---
+
+## PROMPT 072 — Tuning Pipeline
+
+**Date**: 2026-02-14
+**Tests**: 749 existing + 70 new = 819 passing
+
+### Summary
+
+Built a complete Sweep -> Tune Variants -> Walk-Forward -> Score -> Portfolio pipeline. Created scoring system (hard gates + weighted 0-100), per-bot Optuna search spaces, 2-stage param tuner, diversified portfolio builder with currency/bot/TF caps, CLI scripts for tuning and portfolio construction, and comprehensive tests.
+
+### New Files (9)
+
+- `engine/solat_engine/data/ohlcv_validator.py` — OHLCV data quality checks
+- `engine/solat_engine/optimization/search_space.py` — per-bot search spaces + param conversion
+- `engine/solat_engine/optimization/scoring.py` — hard gates + weighted 0-100 scorer
+- `engine/solat_engine/optimization/portfolio_builder.py` — diversified portfolio builder
+- `engine/solat_engine/optimization/tuner.py` — 2-stage Optuna param tuner
+- `engine/scripts/run_tuning.py` — tuning CLI
+- `engine/scripts/build_portfolio.py` — portfolio builder CLI
+- `engine/docs/ops/TUNING_PIPELINE_V1.md` — pipeline documentation
+- `engine/tests/test_tuning_pipeline.py` — 70 tests across 9 test classes
+
+### Modified Files (5)
+
+- `engine/solat_engine/backtest/models.py` — params_override + extended MetricsSummary
+- `engine/solat_engine/backtest/engine.py` — threads params through strategy factory
+- `engine/solat_engine/backtest/parallel_sweep.py` — 13th arg for params passthrough
+- `engine/solat_engine/backtest/metrics.py` — trades_per_day, equity_peak, best/worst 5
+- `engine/solat_engine/optimization/models.py` — AllowlistEntry extended with variant_id, score, evidence
+
+---
+
 ## PROMPT 021 HARDENING — Desktop Error UX & Validation Tests
 
 **Date**: 2026-02-11

@@ -84,6 +84,7 @@ async def run_walk_forward(
         "aggregate_win_rate": result.aggregate_win_rate,
         "aggregate_trades": result.aggregate_trades,
         "message": result.message,
+        "recommended_combos": result.recommended_combos,
     }
 
 
@@ -125,8 +126,22 @@ def main():
         print(f"\nAggregate OOS Metrics:")
         print(f"  Sharpe:   {result['aggregate_sharpe']:.2f}")
         print(f"  Return:   {result['aggregate_return_pct']:.2f}%")
-        print(f"  Win Rate: {result['aggregate_win_rate']:.2%}" if result['aggregate_win_rate'] else "")
+        if result['aggregate_win_rate']:
+            print(f"  Win Rate: {result['aggregate_win_rate']:.2%}")
         print(f"  Trades:   {result['aggregate_trades']}")
+
+    combos = result.get("recommended_combos", [])
+    if combos:
+        print(f"\nRecommended Combos ({len(combos)}):")
+        for c in combos:
+            bot = c.get("bot", "?")
+            sym = c.get("symbol", "?")
+            tf = c.get("timeframe", "?")
+            s = c.get("sharpe", 0)
+            wr = c.get("win_rate", 0)
+            t = c.get("trades", 0)
+            pf = c.get("profit_factor", 0)
+            print(f"  {bot:20} {sym:10} {tf:4} | Sharpe {s:6.2f} | WR {wr*100:5.1f}% | PF {pf:5.2f} | Trades {t}")
 
     if result["message"]:
         print(f"\nMessage: {result['message']}")

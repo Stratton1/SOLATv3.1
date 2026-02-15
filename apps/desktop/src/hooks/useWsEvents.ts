@@ -5,8 +5,6 @@
 import { useEffect, useRef } from "react";
 import { Bar } from "../lib/engineClient";
 
-const DEBUG_INGEST_URL = "http://127.0.0.1:7245/ingest/b34e6a51-242b-4280-9e50-b775760b6116";
-
 // WebSocket event types from engine
 export interface QuoteUpdateEvent {
   type: "quote_update";
@@ -104,16 +102,10 @@ export function useWsEvents({
     const connect = () => {
       if (!mounted) return;
 
-      // #region agent log H5 ws connect attempt
-      fetch(DEBUG_INGEST_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId: "pre-fix", hypothesisId: "H5", location: "useWsEvents.ts:connect:start", message: "WebSocket connect attempt", data: { wsUrl }, timestamp: Date.now() }) }).catch(() => {});
-      // #endregion
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        // #region agent log H5 ws open
-        fetch(DEBUG_INGEST_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId: "pre-fix", hypothesisId: "H5", location: "useWsEvents.ts:onopen", message: "WebSocket connected", data: { wsUrl, readyState: ws.readyState }, timestamp: Date.now() }) }).catch(() => {});
-        // #endregion
         if (!mounted) {
           ws.close();
           return;
@@ -122,9 +114,6 @@ export function useWsEvents({
       };
 
       ws.onclose = () => {
-        // #region agent log H5 ws close
-        fetch(DEBUG_INGEST_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId: "pre-fix", hypothesisId: "H5", location: "useWsEvents.ts:onclose", message: "WebSocket closed", data: { wsUrl, readyState: ws.readyState }, timestamp: Date.now() }) }).catch(() => {});
-        // #endregion
         if (wsRef.current === ws) {
           wsRef.current = null;
         }
@@ -139,9 +128,7 @@ export function useWsEvents({
       };
 
       ws.onerror = () => {
-        // #region agent log H5 ws error
-        fetch(DEBUG_INGEST_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId: "pre-fix", hypothesisId: "H5", location: "useWsEvents.ts:onerror", message: "WebSocket error event", data: { wsUrl, readyState: ws.readyState }, timestamp: Date.now() }) }).catch(() => {});
-        // #endregion
+        // Will trigger onclose — no additional handling needed
       };
 
       ws.onmessage = (event) => {

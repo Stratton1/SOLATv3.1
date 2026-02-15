@@ -19,6 +19,13 @@ Updated for every meaningful code change (enforced via pre-commit hook and CI gu
 ---
 
 
+## 2026-02-15T02:26:07Z — Phase 1: Remove debug fetch calls
+
+**What changed**
+- Removed DEBUG_INGEST_URL constant and 4 debug fetch blocks from useWsEvents.ts that fire failed HTTP requests to non-running debug server on every WS event
+
+---
+
 ## 2026-02-14T23:57:49Z — Merge main into release branch
 
 **What changed**

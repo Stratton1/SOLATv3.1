@@ -5,6 +5,16 @@ Chronological record of major implementation prompts.
 ---
 
 
+## Phase 1: Remove debug fetch calls
+
+**Date**: 2026-02-15
+
+### Summary
+
+Removed DEBUG_INGEST_URL constant and 4 debug fetch blocks from useWsEvents.ts that fire failed HTTP requests to non-running debug server on every WS event
+
+---
+
 ## Merge main into release branch
 
 **Date**: 2026-02-14

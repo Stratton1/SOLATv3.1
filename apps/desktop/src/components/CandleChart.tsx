@@ -4,10 +4,12 @@
  * Features:
  * - OHLC candlesticks
  * - Line overlays (EMA, SMA, Bollinger, Ichimoku, etc.)
- * - Signal markers (BUY/SELL arrows)
+ * - Signal markers (BUY/SELL arrows) with white outline
  * - Execution markers (entry/exit)
- * - SL/TP horizontal dashed lines
+ * - SL/TP shaded risk/reward zones + outcome hit markers
  * - Drawing tools (horizontal, trendline, ray, rectangle)
+ * - Stable pan/zoom (shapes content-hashed, dynamic uirevision)
+ * - Quick zoom via xRange prop
  * - Auto-resize
  */
 
@@ -16,6 +18,7 @@ import Plotly from "plotly.js-finance-dist";
 import { PlotlyChart } from "./PlotlyChart";
 import { Bar, OverlayResult, Signal } from "../lib/engineClient";
 import { Drawing, DrawingTool, DrawingCoord } from "../lib/drawings";
+import { snapToCandle } from "../lib/timestamps";
 
 // =============================================================================
 // Types
@@ -47,7 +50,14 @@ interface CandleChartProps {
   activeTool?: DrawingTool;
   onDrawingComplete?: (drawing: Omit<Drawing, "id">) => void;
   height?: number;
+  timeframe?: string;
+  symbol?: string;
+  /** Explicit x-axis range from zoom buttons or user pan */
+  xRange?: [string, string] | null;
+  /** Show range slider below chart */
+  showRangeSlider?: boolean;
   onCrosshairMove?: (time: number | null, price: number | null) => void;
+  onRelayout?: (event: Plotly.PlotRelayoutEvent) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
@@ -107,7 +117,12 @@ export function CandleChart({
   activeTool = "select",
   onDrawingComplete,
   height,
+  timeframe = "1h",
+  symbol = "",
+  xRange = null,
+  showRangeSlider = false,
   onCrosshairMove,
+  onRelayout,
   onContextMenu,
 }: CandleChartProps) {
   const drawingStartRef = useRef<DrawingCoord | null>(null);
@@ -150,6 +165,7 @@ export function CandleChart({
     const traces: Plotly.Data[] = [];
 
     overlays.forEach((overlay) => {
+      if (!overlay.values) return;
       const type = overlay.type.toLowerCase();
       const colors = OVERLAY_COLORS[type] ?? ["#5f6775"];
 
@@ -187,18 +203,35 @@ export function CandleChart({
     return traces;
   }, [overlays]);
 
-  // Build signal marker traces (per-strategy colors)
+  // Pre-compute candle timestamps for signal alignment
+  const candleTimestamps = useMemo(() => bars.map((b) => b.ts), [bars]);
+  const barMap = useMemo(() => {
+    const m = new Map<string, Bar>();
+    for (const b of bars) m.set(b.ts, b);
+    return m;
+  }, [bars]);
+
+  // Build signal marker traces (per-strategy colors) with timestamp alignment
+  // 2C: Larger markers, white outline, dynamic offset from candle H/L
   const signalTrace: Plotly.Data | null = useMemo(() => {
     if (signals.length === 0) return null;
+
+    const alignedSignals = signals.map((s) => ({
+      ...s,
+      alignedTs: snapToCandle(s.ts, candleTimestamps, timeframe),
+    }));
 
     return {
       type: "scatter" as const,
       mode: "markers" as const,
-      x: signals.map((s) => s.ts),
-      y: signals.map((s) => {
-        // Find closest bar to position marker at low (BUY) or high (SELL)
-        const bar = bars.find((b) => b.ts === s.ts);
-        if (bar) return s.direction === "BUY" ? bar.l * 0.9998 : bar.h * 1.0002;
+      x: alignedSignals.map((s) => s.alignedTs),
+      y: alignedSignals.map((s) => {
+        const bar = barMap.get(s.alignedTs);
+        if (bar) {
+          const range = bar.h - bar.l;
+          const offset = Math.max(range * 0.15, 0.0003);
+          return s.direction === "BUY" ? bar.l - offset : bar.h + offset;
+        }
         return s.price ?? 0;
       }),
       marker: {
@@ -206,13 +239,15 @@ export function CandleChart({
           s.direction === "BUY" ? "triangle-up" : "triangle-down"
         ),
         color: signals.map((s) => getStrategyColor(s.strategy)),
-        size: 10,
+        size: 12,
+        line: { color: "#ffffff", width: 1.5 },
       },
       text: signals.map((s) => {
         const parts = [`${s.direction} ${s.strategy ?? s.source ?? ""}`];
         if (s.reason_codes && s.reason_codes.length > 0) {
           parts.push(s.reason_codes.join(", "));
         }
+        if (s.price != null) parts.push(`Entry: ${s.price.toFixed(5)}`);
         if (s.stop_loss != null) parts.push(`SL: ${s.stop_loss.toFixed(5)}`);
         if (s.take_profit != null) parts.push(`TP: ${s.take_profit.toFixed(5)}`);
         return parts.join("<br>");
@@ -221,7 +256,7 @@ export function CandleChart({
       showlegend: false,
       name: "Signals",
     };
-  }, [signals, bars]);
+  }, [signals, bars, candleTimestamps, timeframe, barMap]);
 
   // Build execution marker traces
   const execTrace: Plotly.Data | null = useMemo(() => {
@@ -252,25 +287,127 @@ export function CandleChart({
     };
   }, [executions]);
 
+  // 2D: SL/TP outcome hit markers — find where SL or TP was hit for latest signals
+  const hitMarkerTrace: Plotly.Data | null = useMemo(() => {
+    if (signals.length === 0 || bars.length === 0) return null;
+
+    const latestByStrategy = new Map<string, Signal>();
+    for (const sig of signals) {
+      if (sig.strategy) latestByStrategy.set(sig.strategy, sig);
+    }
+
+    const hitX: string[] = [];
+    const hitY: number[] = [];
+    const hitText: string[] = [];
+    const hitColors: string[] = [];
+
+    for (const [, sig] of latestByStrategy) {
+      if (sig.price == null || (sig.stop_loss == null && sig.take_profit == null)) continue;
+
+      const sigTime = new Date(sig.ts).getTime();
+      const isBuy = sig.direction === "BUY";
+
+      let slHitBar: Bar | null = null;
+      let tpHitBar: Bar | null = null;
+
+      for (const bar of bars) {
+        const barTime = new Date(bar.ts).getTime();
+        if (barTime <= sigTime) continue;
+
+        if (sig.stop_loss != null && !slHitBar) {
+          if (isBuy && bar.l <= sig.stop_loss) slHitBar = bar;
+          if (!isBuy && bar.h >= sig.stop_loss) slHitBar = bar;
+        }
+        if (sig.take_profit != null && !tpHitBar) {
+          if (isBuy && bar.h >= sig.take_profit) tpHitBar = bar;
+          if (!isBuy && bar.l <= sig.take_profit) tpHitBar = bar;
+        }
+
+        if (slHitBar && tpHitBar) break;
+      }
+
+      // Whichever hit first
+      if (slHitBar && tpHitBar) {
+        const slTime = new Date(slHitBar.ts).getTime();
+        const tpTime = new Date(tpHitBar.ts).getTime();
+        if (slTime <= tpTime) {
+          tpHitBar = null; // SL hit first
+        } else {
+          slHitBar = null; // TP hit first
+        }
+      }
+
+      if (slHitBar && sig.stop_loss != null) {
+        hitX.push(slHitBar.ts);
+        hitY.push(sig.stop_loss);
+        hitText.push("SL HIT");
+        hitColors.push(THEME.slRed);
+      }
+      if (tpHitBar && sig.take_profit != null) {
+        hitX.push(tpHitBar.ts);
+        hitY.push(sig.take_profit);
+        hitText.push("TP HIT");
+        hitColors.push(THEME.tpGreen);
+      }
+    }
+
+    if (hitX.length === 0) return null;
+
+    return {
+      type: "scatter" as const,
+      mode: "markers+text" as const,
+      x: hitX,
+      y: hitY,
+      marker: {
+        symbol: "x" as const,
+        color: hitColors,
+        size: 10,
+        line: { color: "#ffffff", width: 1 },
+      },
+      text: hitText,
+      textposition: "top center" as const,
+      textfont: { size: 8, color: "#9da5b4" },
+      hoverinfo: "text" as const,
+      showlegend: false,
+      name: "SL/TP Outcomes",
+    };
+  }, [signals, bars]);
+
   // Combine all traces
   const data: Plotly.Data[] = useMemo(() => {
     const traces: Plotly.Data[] = [candleTrace, ...overlayTraces];
     if (signalTrace) traces.push(signalTrace);
     if (execTrace) traces.push(execTrace);
+    if (hitMarkerTrace) traces.push(hitMarkerTrace);
     return traces;
-  }, [candleTrace, overlayTraces, signalTrace, execTrace]);
+  }, [candleTrace, overlayTraces, signalTrace, execTrace, hitMarkerTrace]);
 
-  // Build SL/TP + signal SL/TP + drawing shapes
+  // Build SL/TP + signal SL/TP + drawing shapes + shaded risk/reward zones
   const shapes: Partial<Plotly.Shape>[] = useMemo(() => {
     const s: Partial<Plotly.Shape>[] = [];
 
-    // Signal SL/TP from latest signal per strategy (dotted lines)
+    // Signal SL/TP from latest signal per strategy
     const latestByStrategy = new Map<string, Signal>();
     for (const sig of signals) {
       if (sig.strategy) latestByStrategy.set(sig.strategy, sig);
     }
     for (const [strategy, sig] of latestByStrategy) {
       const color = getStrategyColor(strategy);
+
+      // 2D: Entry price line
+      if (sig.price != null) {
+        s.push({
+          type: "line",
+          xref: "paper",
+          x0: 0,
+          x1: 1,
+          y0: sig.price,
+          y1: sig.price,
+          line: { color, width: 1, dash: "solid" },
+        });
+      }
+
+      // SL line + shaded risk zone
       if (sig.stop_loss != null) {
         s.push({
           type: "line",
@@ -281,7 +418,23 @@ export function CandleChart({
           y1: sig.stop_loss,
           line: { color: THEME.slRed, width: 1, dash: "dot" },
         });
+
+        // 2D: Shaded risk zone (entry to SL)
+        if (sig.price != null) {
+          s.push({
+            type: "rect",
+            xref: "paper",
+            x0: 0,
+            x1: 1,
+            y0: sig.price,
+            y1: sig.stop_loss,
+            line: { width: 0 },
+            fillcolor: "rgba(244, 91, 105, 0.08)",
+          });
+        }
       }
+
+      // TP line + shaded reward zone
       if (sig.take_profit != null) {
         s.push({
           type: "line",
@@ -290,8 +443,22 @@ export function CandleChart({
           x1: 1,
           y0: sig.take_profit,
           y1: sig.take_profit,
-          line: { color: color, width: 1, dash: "dot" },
+          line: { color, width: 1, dash: "dot" },
         });
+
+        // 2D: Shaded reward zone (entry to TP)
+        if (sig.price != null) {
+          s.push({
+            type: "rect",
+            xref: "paper",
+            x0: 0,
+            x1: 1,
+            y0: sig.price,
+            y1: sig.take_profit,
+            line: { width: 0 },
+            fillcolor: "rgba(0, 214, 143, 0.08)",
+          });
+        }
       }
     }
 
@@ -350,7 +517,6 @@ export function CandleChart({
         case "ray":
           if (!drawing.p1 || !drawing.p2) break;
           {
-            // Extend to right edge
             const lastBar = bars[bars.length - 1];
             const endTime = lastBar
               ? new Date(lastBar.ts).getTime() / 1000
@@ -397,29 +563,42 @@ export function CandleChart({
     return s;
   }, [slTpLevels, drawings, bars, signals]);
 
-  // Layout with shapes — use autosize to fill container; only set explicit
-  // height when the caller provides one (e.g. dashboard mini-chart).
+  // 2A: Content-stabilize shapes to prevent Plotly re-render on every tick
+  const shapesKey = useMemo(() => JSON.stringify(shapes), [shapes]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableShapes = useMemo(() => shapes, [shapesKey]);
+
+  // Layout with shapes — use autosize to fill container
   const layout: Partial<Plotly.Layout> = useMemo(
     () => ({
       autosize: true,
       ...(height != null ? { height } : {}),
       xaxis: {
         type: "date" as const,
-        rangeslider: { visible: false },
+        rangeslider: { visible: showRangeSlider },
         gridcolor: "#e8ebf0",
         linecolor: "#d5d9e0",
+        ...(xRange
+          ? { range: xRange, autorange: false }
+          : { autorange: true }),
       },
       yaxis: {
         side: "right" as const,
         gridcolor: "#e8ebf0",
         linecolor: "#d5d9e0",
+        autorange: true,
       },
-      shapes,
+      shapes: stableShapes,
       margin: { l: 10, r: 60, t: 10, b: 30 },
       hovermode: "x unified" as const,
+      hoverlabel: {
+        bgcolor: "#1e1e2e",
+        font: { size: 10, color: "#e0e0e0" },
+        bordercolor: "#3a3a4a",
+      },
       dragmode: activeTool === "select" ? ("pan" as const) : (false as const),
     }),
-    [height, shapes, activeTool]
+    [height, stableShapes, activeTool, xRange, showRangeSlider]
   );
 
   const config: Partial<Plotly.Config> = useMemo(
@@ -428,6 +607,12 @@ export function CandleChart({
       displayModeBar: false as const,
     }),
     []
+  );
+
+  // 2A: Dynamic uirevision — resets on symbol/timeframe change, stable otherwise
+  const uirevision = useMemo(
+    () => `${symbol}:${timeframe}`,
+    [symbol, timeframe]
   );
 
   // Handle chart clicks for drawing tools
@@ -513,7 +698,6 @@ export function CandleChart({
     const entries = executions.filter((e) => e.type === "ENTRY").length;
     const exits = executions.filter((e) => e.type === "EXIT").length;
 
-    // Per-strategy counts
     const byStrategy = new Map<string, number>();
     for (const s of signals) {
       const key = s.strategy ?? "unknown";
@@ -539,11 +723,12 @@ export function CandleChart({
           config={config}
           onClick={handleClick}
           onHover={handleHover}
+          onRelayout={onRelayout}
+          uirevision={uirevision}
         />
       </div>
       {(hasMarkers || hasSlTp) && (
         <div className="chart-legend">
-          {/* Per-strategy signal counts */}
           {[...markerCounts.byStrategy.entries()].map(([strategy, count]) => (
             <span key={strategy} className="legend-item">
               <span

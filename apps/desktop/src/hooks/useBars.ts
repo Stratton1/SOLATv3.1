@@ -27,7 +27,7 @@ interface UseBarsResult {
 export function useBars({
   symbol,
   timeframe,
-  limit = 500,
+  limit = 2000,
   autoRefresh = false,
   refreshInterval = 60000,
 }: UseBarsOptions): UseBarsResult {

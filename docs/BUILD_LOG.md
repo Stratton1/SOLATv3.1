@@ -5,6 +5,16 @@ Chronological record of major implementation prompts.
 ---
 
 
+## Phase 2: Chart overhaul
+
+**Date**: 2026-02-15
+
+### Summary
+
+Fix pan snap-back (stabilized shapes, dynamic uirevision), increase bars 500->2000, signal markers with white outline and dynamic offset, SL/TP shaded zones with outcome hit markers, zoom buttons (1D/1W/1M/3M/ALL), remove 6-chart layout, add focus mode, live/HIST badge, toolbar rationalized with overflow menu, drawing tools in overflow
+
+---
+
 ## Phase 1: Remove debug fetch calls
 
 **Date**: 2026-02-15

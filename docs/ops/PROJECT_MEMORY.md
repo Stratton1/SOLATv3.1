@@ -19,6 +19,13 @@ Updated for every meaningful code change (enforced via pre-commit hook and CI gu
 ---
 
 
+## 2026-02-15T02:26:18Z — Phase 2: Chart overhaul
+
+**What changed**
+- Fix pan snap-back (stabilized shapes, dynamic uirevision), increase bars 500->2000, signal markers with white outline and dynamic offset, SL/TP shaded zones with outcome hit markers, zoom buttons (1D/1W/1M/3M/ALL), remove 6-chart layout, add focus mode, live/HIST badge, toolbar rationalized with overflow menu, drawing tools in overflow
+
+---
+
 ## 2026-02-15T02:26:07Z — Phase 1: Remove debug fetch calls
 
 **What changed**

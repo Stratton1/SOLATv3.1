@@ -19,6 +19,13 @@ Updated for every meaningful code change (enforced via pre-commit hook and CI gu
 ---
 
 
+## 2026-02-15T02:26:32Z — Phase 3: Dashboard overhaul
+
+**What changed**
+- Replace mini chart with Control panel (Test Engine, Connect Broker, Sync History, Start DEMO), fix balance showing Not Connected instead of ---, equity curve always renders chart frame with annotation when empty, compact KPI row
+
+---
+
 ## 2026-02-15T02:26:18Z — Phase 2: Chart overhaul
 
 **What changed**

@@ -1,5 +1,5 @@
 /**
- * Dashboard — Bloomberg-style dense grid with KPIs, mini chart,
+ * Dashboard — Bloomberg-style dense grid with KPIs, control panel,
  * active strategies, positions, watchlist, equity curve, and signals.
  */
 
@@ -7,12 +7,13 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import Plotly from "plotly.js-finance-dist";
 import { PlotlyChart } from "../components/PlotlyChart";
+import { SummaryBar } from "../components/ui/SummaryBar";
 import { useExecutionStatus } from "../hooks/useExecutionStatus";
 import { useEngineHealth } from "../hooks/useEngineHealth";
+import { useToast } from "../context/ToastContext";
 import {
   engineClient,
   ExecutionFill,
-  Bar,
   OpenPosition,
   Quote,
   AutopilotCombo,
@@ -26,8 +27,9 @@ import { formatCurrency, formatPnl } from "../lib/format";
 
 export function DashboardScreen() {
   const navigate = useNavigate();
-  const { status } = useExecutionStatus();
+  const { status, connect, arm } = useExecutionStatus();
   const { health, connectionState } = useEngineHealth();
+  const { showToast } = useToast();
 
   // Data state
   const [fills, setFills] = useState<ExecutionFill[]>([]);
@@ -35,8 +37,7 @@ export function DashboardScreen() {
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
   const [combos, setCombos] = useState<AutopilotCombo[]>([]);
   const [signals, setSignals] = useState<TerminalSignal[]>([]);
-  const [miniBars, setMiniBars] = useState<Bar[]>([]);
-  const [miniSymbol, setMiniSymbol] = useState<string>("");
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Fetch fills for equity curve
   const fetchFills = useCallback(async () => {
@@ -88,29 +89,6 @@ export function DashboardScreen() {
     }
   }, []);
 
-  // Fetch mini chart bars
-  const fetchMiniBars = useCallback(async () => {
-    try {
-      // Try to get a symbol from allowlist first
-      let sym = miniSymbol;
-      if (!sym) {
-        try {
-          const al = await engineClient.getAllowlist();
-          if (al.symbols.length > 0) sym = al.symbols[0];
-        } catch {
-          /* fallback */
-        }
-      }
-      if (!sym) sym = "EUR/USD";
-      setMiniSymbol(sym);
-
-      const res = await engineClient.getBars(sym, "1h", { limit: 100 });
-      setMiniBars(res.bars);
-    } catch {
-      /* engine may be offline */
-    }
-  }, [miniSymbol]);
-
   // Set up polling
   useEffect(() => {
     fetchFills();
@@ -118,7 +96,6 @@ export function DashboardScreen() {
     fetchQuotes();
     fetchCombos();
     fetchSignals();
-    fetchMiniBars();
 
     const intervals = [
       setInterval(fetchFills, 30000),
@@ -126,19 +103,19 @@ export function DashboardScreen() {
       setInterval(fetchQuotes, 3000),
       setInterval(fetchCombos, 10000),
       setInterval(fetchSignals, 5000),
-      setInterval(fetchMiniBars, 60000),
     ];
 
     return () => intervals.forEach(clearInterval);
-  }, [fetchFills, fetchPositions, fetchQuotes, fetchCombos, fetchSignals, fetchMiniBars]);
+  }, [fetchFills, fetchPositions, fetchQuotes, fetchCombos, fetchSignals]);
 
   // Derived values
   const engineUp = connectionState === "connected";
   const balance = status?.account_balance;
   const pnlToday = status?.realized_pnl_today ?? 0;
-
   const openCount = status?.open_position_count ?? 0;
   const mode = status?.mode ?? "---";
+  const brokerConnected = status?.connected ?? false;
+  const isArmed = status?.armed ?? false;
 
   // Build equity data from fills
   const equityData = useMemo(() => {
@@ -152,30 +129,10 @@ export function DashboardScreen() {
       if (fill.pnl != null) running += fill.pnl;
       points.push({ time: fill.ts.slice(0, 10), value: running });
     }
-    // Deduplicate by date
     const byDate = new Map<string, number>();
     for (const p of points) byDate.set(p.time, p.value);
     return Array.from(byDate.entries()).map(([time, value]) => ({ time, value }));
   }, [fills, status?.account_balance]);
-
-  // Mini chart trace
-  const miniChartData: Plotly.Data[] = useMemo(() => {
-    if (miniBars.length === 0) return [];
-    return [
-      {
-        type: "candlestick" as const,
-        x: miniBars.map((b) => b.ts),
-        open: miniBars.map((b) => b.o),
-        high: miniBars.map((b) => b.h),
-        low: miniBars.map((b) => b.l),
-        close: miniBars.map((b) => b.c),
-        increasing: { line: { color: "#00d68f" }, fillcolor: "#00d68f" },
-        decreasing: { line: { color: "#f45b69" }, fillcolor: "#f45b69" },
-        showlegend: false,
-        hoverinfo: "skip" as const,
-      },
-    ];
-  }, [miniBars]);
 
   // Equity trace
   const equityTraceData: Plotly.Data[] = useMemo(() => {
@@ -195,14 +152,72 @@ export function DashboardScreen() {
     ];
   }, [equityData]);
 
+  // 3B: Control panel handlers
+  const handleTestEngine = useCallback(async () => {
+    try {
+      const h = await engineClient.getHealth();
+      showToast(`Engine: ${h.status} (v${h.version})`, "success");
+    } catch {
+      showToast("Engine unreachable", "error");
+    }
+  }, [showToast]);
+
+  const handleConnectBroker = useCallback(async () => {
+    try {
+      const res = await connect();
+      showToast(res.ok ? "Broker connected" : `Connection failed: ${res.error}`, res.ok ? "success" : "error");
+    } catch {
+      showToast("Connection failed", "error");
+    }
+  }, [connect, showToast]);
+
+  const handleSyncHistory = useCallback(async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      showToast("Syncing 30 days of history...", "info");
+      await engineClient.quickSync(30);
+      showToast("History sync complete", "success");
+    } catch {
+      showToast("Sync failed", "error");
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [isSyncing, showToast]);
+
+  const handleStartDemo = useCallback(async () => {
+    try {
+      const res = await arm(true);
+      showToast(res.armed ? "DEMO armed" : `Arm failed: ${res.error}`, res.armed ? "success" : "error");
+    } catch {
+      showToast("Arm failed", "error");
+    }
+  }, [arm, showToast]);
+
   return (
+    <div className="screen-layout">
+      <SummaryBar
+        pageId="dashboard"
+        title="Dashboard"
+        description="Live overview of your trading activity. KPIs, positions, watchlist, equity curve, and recent signals at a glance."
+        actions={[
+          "Monitor open positions and daily P&L",
+          "Use control panel to connect and arm",
+          "Check active strategies and signal activity",
+        ]}
+        chips={[
+          { label: "Mode", value: mode, variant: mode === "LIVE" ? "danger" : "info" },
+          { label: "Positions", value: `${openCount}`, variant: openCount > 0 ? "warning" : "default" },
+          { label: "Engine", value: engineUp ? "Online" : "Offline", variant: engineUp ? "success" : "danger" },
+        ]}
+      />
     <div className="dashboard-bloomberg">
-      {/* Row 0: KPI Strip */}
+      {/* Row 0: KPI Strip — 3A compact */}
       <div className="dash-kpi-strip">
         <div className="dash-kpi">
           <span className="dash-kpi-label">BALANCE</span>
           <span className="dash-kpi-value">
-            {balance != null ? formatCurrency(balance) : "---"}
+            {balance != null ? formatCurrency(balance) : (brokerConnected ? "Loading..." : "Not Connected")}
           </span>
         </div>
         <div className={`dash-kpi ${pnlToday >= 0 ? "kpi-pos" : "kpi-neg"}`}>
@@ -232,41 +247,38 @@ export function DashboardScreen() {
         </div>
       </div>
 
-      {/* Row 1: Mini Chart + Active Strategies */}
-      <div className="dash-widget dash-area-chart">
+      {/* Row 1: Control Panel + Active Strategies */}
+      <div className="dash-widget dash-area-control">
         <div className="dash-widget-header">
-          <span>CHART {miniSymbol && `\u2014 ${miniSymbol} (1H)`}</span>
+          <span>CONTROL</span>
         </div>
-        <div
-          className="dash-widget-body"
-          style={{ cursor: "pointer" }}
-          onClick={() => navigate("/terminal")}
-        >
-          {miniBars.length > 0 ? (
-            <PlotlyChart
-              data={miniChartData}
-              layout={{
-                height: 200,
-                margin: { l: 5, r: 45, t: 5, b: 20 },
-                xaxis: {
-                  type: "date" as const,
-                  rangeslider: { visible: false },
-                  showgrid: false,
-                  gridcolor: "#e8ebf0",
-                  linecolor: "#d5d9e0",
-                },
-                yaxis: {
-                  side: "right" as const,
-                  gridcolor: "#e8ebf0",
-                  linecolor: "#d5d9e0",
-                },
-                dragmode: false as const,
-              }}
-              config={{ displayModeBar: false, scrollZoom: false }}
-            />
-          ) : (
-            <div className="dash-widget-empty">No bar data</div>
-          )}
+        <div className="dash-widget-body dash-control-grid">
+          <button className="dash-ctrl-btn" onClick={handleTestEngine}>
+            <span className="ctrl-icon">{"\u2699"}</span>
+            <span className="ctrl-label">Test Engine</span>
+            <span className={`ctrl-state ${engineUp ? "state-ok" : "state-err"}`}>
+              {engineUp ? "Online" : "Offline"}
+            </span>
+          </button>
+          <button className="dash-ctrl-btn" onClick={handleConnectBroker}>
+            <span className="ctrl-icon">{"\u2197"}</span>
+            <span className="ctrl-label">Connect Broker</span>
+            <span className={`ctrl-state ${brokerConnected ? "state-ok" : "state-err"}`}>
+              {brokerConnected ? "Connected" : "Disconnected"}
+            </span>
+          </button>
+          <button className="dash-ctrl-btn" onClick={handleSyncHistory} disabled={isSyncing}>
+            <span className="ctrl-icon">{isSyncing ? "\u23F3" : "\u21BB"}</span>
+            <span className="ctrl-label">Sync History</span>
+            <span className="ctrl-state">{isSyncing ? "Syncing..." : "Ready"}</span>
+          </button>
+          <button className="dash-ctrl-btn" onClick={handleStartDemo}>
+            <span className="ctrl-icon">{"\u25B6"}</span>
+            <span className="ctrl-label">Start DEMO</span>
+            <span className={`ctrl-state ${isArmed ? "state-ok" : "state-err"}`}>
+              {isArmed ? "Armed" : "Standby"}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -398,20 +410,27 @@ export function DashboardScreen() {
           <span className="dash-widget-count">{fills.length} fills</span>
         </div>
         <div className="dash-widget-body">
-          {equityData.length > 0 ? (
-            <PlotlyChart
-              data={equityTraceData}
-              layout={{
-                height: 160,
-                margin: { l: 50, r: 10, t: 5, b: 25 },
-                xaxis: { type: "date" as const, gridcolor: "#e8ebf0", linecolor: "#d5d9e0" },
-                yaxis: { gridcolor: "#e8ebf0", linecolor: "#d5d9e0" },
-              }}
-              config={{ displayModeBar: false, scrollZoom: false }}
-            />
-          ) : (
-            <div className="dash-widget-empty">No fill data yet</div>
-          )}
+          <PlotlyChart
+            data={equityTraceData}
+            layout={{
+              height: 160,
+              margin: { l: 50, r: 10, t: 5, b: 25 },
+              xaxis: { type: "date" as const, gridcolor: "#e8ebf0", linecolor: "#d5d9e0" },
+              yaxis: { gridcolor: "#e8ebf0", linecolor: "#d5d9e0" },
+              ...(equityData.length === 0 ? {
+                annotations: [{
+                  text: "No fill data yet",
+                  xref: "paper" as const,
+                  yref: "paper" as const,
+                  x: 0.5,
+                  y: 0.5,
+                  showarrow: false,
+                  font: { size: 12, color: "#9da5b4" },
+                }],
+              } : {}),
+            }}
+            config={{ displayModeBar: false, scrollZoom: false }}
+          />
         </div>
       </div>
 
@@ -457,6 +476,7 @@ export function DashboardScreen() {
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 }

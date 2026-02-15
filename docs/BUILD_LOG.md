@@ -5,6 +5,16 @@ Chronological record of major implementation prompts.
 ---
 
 
+## Phase 3: Dashboard overhaul
+
+**Date**: 2026-02-15
+
+### Summary
+
+Replace mini chart with Control panel (Test Engine, Connect Broker, Sync History, Start DEMO), fix balance showing Not Connected instead of ---, equity curve always renders chart frame with annotation when empty, compact KPI row
+
+---
+
 ## Phase 2: Chart overhaul
 
 **Date**: 2026-02-15

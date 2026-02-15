@@ -3,6 +3,7 @@ import { DemoChecklist } from "./DemoChecklist";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { ExecutionPanel } from "./ExecutionPanel";
 import { InfoTip } from "./InfoTip";
+import { SummaryBar } from "./ui/SummaryBar";
 import { useAutopilot } from "../hooks/useAutopilot";
 import { useTerminalSignals } from "../hooks/useTerminalSignals";
 import { useAllowlist } from "../hooks/useAllowlist";
@@ -356,6 +357,25 @@ export function StatusScreen({
   };
 
   return (
+    <div className="screen-layout">
+      <SummaryBar
+        pageId="system"
+        title="System"
+        description="Mission control for the SOLAT engine. Monitor connectivity, risk gates, execution state, data library, and autopilot status."
+        actions={[
+          "Connect your IG broker account to enable market data",
+          "Review risk gates before enabling execution",
+          "Complete the DEMO checklist before going live",
+        ]}
+        chips={[
+          { label: "Engine", value: health?.status === "healthy" ? "Healthy" : health?.status ?? "Offline",
+            variant: health?.status === "healthy" ? "success" : "danger" },
+          { label: "Broker", value: brokerStatus?.authenticated ? "Connected" : "Disconnected",
+            variant: brokerStatus?.authenticated ? "success" : "warning" },
+          { label: "WS", value: wsConnected ? "Connected" : "Disconnected",
+            variant: wsConnected ? "success" : "danger" },
+        ]}
+      />
     <div className="status-dashboard">
       <MissionControlHeader
         health={health}
@@ -435,6 +455,7 @@ export function StatusScreen({
           </div>
         </div>
       </aside>
+    </div>
     </div>
   );
 }

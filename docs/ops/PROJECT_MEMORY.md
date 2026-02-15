@@ -19,6 +19,43 @@ Updated for every meaningful code change (enforced via pre-commit hook and CI gu
 ---
 
 
+## 2026-02-15T02:27:56Z — UI shell/screens refactor batch
+
+**What changed**
+- Updated desktop shell and status/backtest screens
+- Added new terminal screens and shared UI components
+- Adjusted Plotly wrapper and app/sidebar wiring
+
+**Files**
+- `apps/desktop/index.html`
+- `apps/desktop/public/solat.svg`
+- `apps/desktop/src/App.tsx`
+- `apps/desktop/src/components/InfoTip.tsx`
+- `apps/desktop/src/components/PlotlyChart.tsx`
+- `apps/desktop/src/components/Sidebar.tsx`
+- `apps/desktop/src/components/StatusScreen.tsx`
+- `apps/desktop/src/components/StatusStrip.tsx`
+- `apps/desktop/src/components/backtest/BacktestWizard.tsx`
+- `apps/desktop/src/components/ui/EmptyState.tsx`
+- `apps/desktop/src/components/ui/Modal.tsx`
+- `apps/desktop/src/components/ui/Panel.tsx`
+- `apps/desktop/src/components/ui/Popover.tsx`
+- `apps/desktop/src/components/ui/SummaryBar.tsx`
+- `apps/desktop/src/components/ui/Tooltip.tsx`
+- `apps/desktop/src/components/ui/index.ts`
+- `apps/desktop/src/screens/AllowlistScreen.tsx`
+- `apps/desktop/src/screens/BacktestsScreen.tsx`
+- `apps/desktop/src/screens/BlotterScreen.tsx`
+- `apps/desktop/src/screens/BotsScreen.tsx`
+- `apps/desktop/src/screens/OptimizationScreen.tsx`
+- `apps/desktop/src/screens/PlaygroundScreen.tsx`
+
+**Verification**
+- Tests: `not run`
+- Results: not run
+
+---
+
 ## 2026-02-15T02:26:44Z — Phase 4: Home page overhaul
 
 **What changed**

@@ -14,6 +14,7 @@ import { BacktestRunSummary } from "../lib/engineClient";
 import { BacktestRunViewer } from "../components/backtest/BacktestRunViewer";
 import { BacktestComparison } from "../components/backtest/BacktestComparison";
 import { BacktestWizard } from "../components/backtest/BacktestWizard";
+import { SummaryBar } from "../components/ui/SummaryBar";
 import { InfoTip } from "../components/InfoTip";
 
 export function BacktestsScreen() {
@@ -98,6 +99,21 @@ export function BacktestsScreen() {
   }
 
   return (
+    <div className="screen-layout">
+      <SummaryBar
+        pageId="backtests"
+        title="Backtests"
+        description="Run and review strategy backtests on historical data. Each run shows key metrics like Sharpe ratio, win rate, and return. Select runs to compare side-by-side."
+        actions={[
+          "Click 'New Backtest' to configure and launch a run",
+          "Select multiple runs (up to 5) to compare metrics",
+          "Click any row to view detailed results and equity curve",
+        ]}
+        chips={[
+          { label: "Runs", value: `${runs.length}`, variant: "info" },
+          { label: "Comparing", value: `${compareRunIds.size}`, variant: compareRunIds.size > 0 ? "warning" : "default" },
+        ]}
+      />
     <div className="backtests-screen">
       <div className="backtests-header">
         <h2>
@@ -189,6 +205,7 @@ export function BacktestsScreen() {
           }}
         />
       )}
+    </div>
     </div>
   );
 }

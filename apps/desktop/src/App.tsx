@@ -7,6 +7,10 @@ import { TerminalScreen } from "./screens/TerminalScreen";
 import { BacktestsScreen } from "./screens/BacktestsScreen";
 import { OptimizationScreen } from "./screens/OptimizationScreen";
 import { BlotterScreen } from "./screens/BlotterScreen";
+import { IntroScreen } from "./screens/IntroScreen";
+import { BotsScreen } from "./screens/BotsScreen";
+import { AllowlistScreen } from "./screens/AllowlistScreen";
+import { PlaygroundScreen } from "./screens/PlaygroundScreen";
 
 import { OfflineBanner } from "./components/OfflineBanner";
 import { RouteErrorBoundary } from "./components/ErrorBoundary";
@@ -40,8 +44,8 @@ function AppContent() {
   const [showPalette, setShowPalette] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
 
-  // Global hotkeys — 6 tabs: Dashboard, Charts, Backtests, Optimise, Blotter, System
-  const NAV_ROUTES = ["/", "/terminal", "/backtests", "/optimise", "/blotter", "/system"];
+  // Global hotkeys — tabs: Home, Dashboard, Charts, Backtests, Optimise, Bots, Allowlist, Playground, Blotter, System
+  const NAV_ROUTES = ["/", "/dashboard", "/terminal", "/backtests", "/optimise", "/bots", "/allowlist", "/playground", "/blotter", "/system"];
   useHotkeys({
     "Meta+k": () => setShowPalette(true),
     "Meta+1": () => navigate(NAV_ROUTES[0]),
@@ -50,6 +54,10 @@ function AppContent() {
     "Meta+4": () => navigate(NAV_ROUTES[3]),
     "Meta+5": () => navigate(NAV_ROUTES[4]),
     "Meta+6": () => navigate(NAV_ROUTES[5]),
+    "Meta+7": () => navigate(NAV_ROUTES[6]),
+    "Meta+8": () => navigate(NAV_ROUTES[7]),
+    "Meta+9": () => navigate(NAV_ROUTES[8]),
+    "Meta+0": () => navigate(NAV_ROUTES[9]),
     "Escape": () => setShowPalette(false),
   });
 
@@ -66,8 +74,18 @@ function AppContent() {
         <header className="app-header">
           <div className="app-title-section">
              <h2 className="section-title">
-               {location.pathname === "/" ? "Dashboard" :
-                location.pathname.slice(1).charAt(0).toUpperCase() + location.pathname.slice(2)}
+               {({
+                 "/": "Home",
+                 "/dashboard": "Dashboard",
+                 "/terminal": "Charts",
+                 "/backtests": "Backtests",
+                 "/optimise": "Optimise",
+                 "/bots": "Bots & Strategies",
+                 "/allowlist": "Allowlist",
+                 "/playground": "Playground",
+                 "/blotter": "Blotter",
+                 "/system": "System",
+               } as Record<string, string>)[location.pathname] ?? "SOLAT"}
              </h2>
           </div>
 
@@ -108,10 +126,14 @@ function AppContent() {
 
         <main className={`app-main ${isTerminal ? "terminal-main-container" : ""}`}>
           <Routes>
-            <Route path="/" element={<RouteErrorBoundary><DashboardScreen /></RouteErrorBoundary>} />
+            <Route path="/" element={<RouteErrorBoundary><IntroScreen /></RouteErrorBoundary>} />
+            <Route path="/dashboard" element={<RouteErrorBoundary><DashboardScreen /></RouteErrorBoundary>} />
             <Route path="/terminal" element={<RouteErrorBoundary><TerminalScreen /></RouteErrorBoundary>} />
             <Route path="/backtests" element={<RouteErrorBoundary><BacktestsScreen /></RouteErrorBoundary>} />
             <Route path="/optimise" element={<RouteErrorBoundary><OptimizationScreen /></RouteErrorBoundary>} />
+            <Route path="/bots" element={<RouteErrorBoundary><BotsScreen /></RouteErrorBoundary>} />
+            <Route path="/allowlist" element={<RouteErrorBoundary><AllowlistScreen /></RouteErrorBoundary>} />
+            <Route path="/playground" element={<RouteErrorBoundary><PlaygroundScreen /></RouteErrorBoundary>} />
             <Route path="/blotter" element={<RouteErrorBoundary><BlotterScreen /></RouteErrorBoundary>} />
             <Route
               path="/system"

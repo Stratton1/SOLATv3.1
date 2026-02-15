@@ -16,6 +16,7 @@ import {
   ExecutionFill,
   ExecutionOrder,
 } from "../lib/engineClient";
+import { SummaryBar } from "../components/ui/SummaryBar";
 import { InfoTip } from "../components/InfoTip";
 import { useToast } from "../context/ToastContext";
 import { formatPnl } from "../lib/format";
@@ -187,6 +188,22 @@ export function BlotterScreen() {
   );
 
   return (
+    <div className="screen-layout">
+      <SummaryBar
+        pageId="blotter"
+        title="Trade Blotter"
+        description="Execution audit trail showing all events, fills, and orders. Data refreshes every 15 seconds."
+        actions={[
+          "Filter by symbol, direction, bot, or date range",
+          "Copy CSV to clipboard for external analysis",
+          "Click timestamps to view on chart",
+        ]}
+        chips={[
+          { label: "Events", value: `${events.length}`, variant: "default" },
+          { label: "Fills", value: `${fills.length}`, variant: "info" },
+          { label: "Orders", value: `${orders.length}`, variant: "default" },
+        ]}
+      />
     <div className="blotter-screen">
       <div className="blotter-header">
         <h2>
@@ -296,6 +313,7 @@ export function BlotterScreen() {
           <OrdersTable orders={filteredOrders} onViewChart={viewOnChart} />
         )}
       </div>
+    </div>
     </div>
   );
 }

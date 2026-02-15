@@ -6,6 +6,7 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { useOptimization } from "../hooks/useOptimization";
 import { useRecommendations } from "../hooks/useRecommendations";
+import { SummaryBar } from "../components/ui/SummaryBar";
 import { InfoTip } from "../components/InfoTip";
 import { useToast } from "../context/ToastContext";
 import { Proposal, engineClient, WalkForwardRequest, RecommendedSet, AllowlistGroup } from "../lib/engineClient";
@@ -395,6 +396,22 @@ export function OptimizationScreen() {
   }
 
   return (
+    <div className="screen-layout">
+      <SummaryBar
+        pageId="optimise"
+        title="Optimise"
+        description="Walk-forward validation, parameter optimisation, and strategy selection. Run WFO to validate strategies out-of-sample, then apply recommended sets to your allowlist."
+        actions={[
+          "Run Walk-Forward to validate strategies on unseen data",
+          "Review recommended sets and apply the best combos",
+          "Check the scheduler for automated optimisation jobs",
+        ]}
+        chips={[
+          { label: "Proposals", value: `${proposals?.length ?? 0}`, variant: "info" },
+          { label: "Scheduler", value: schedulerStatus?.running ? "Running" : "Stopped",
+            variant: schedulerStatus?.running ? "success" : "default" },
+        ]}
+      />
     <div className="opt-screen">
       <div className="page-grid-2col" style={{ padding: 0, gap: 8 }}>
 
@@ -562,6 +579,7 @@ export function OptimizationScreen() {
           }}
         />
       )}
+    </div>
     </div>
   );
 }

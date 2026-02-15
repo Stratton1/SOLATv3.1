@@ -12,6 +12,7 @@ import { ELITE_8_BOTS, CATEGORIES } from "../../lib/elite8Meta";
 import { TIMEFRAMES } from "../../lib/workspace";
 import { BacktestRequest } from "../../lib/engineClient";
 import { useBacktestRunner } from "../../hooks/useBacktestRunner";
+import { clampProgress } from "../../lib/progress";
 
 interface BacktestWizardProps {
   onClose: () => void;
@@ -121,9 +122,17 @@ export function BacktestWizard({ onClose, onComplete }: BacktestWizardProps) {
               <div className="loading-spinner" />
               <p>{status?.message || "Running backtest..."}</p>
               {status?.progress != null && (
-                <p className="num" style={{ marginTop: 8, color: "var(--text-muted)" }}>
-                  Progress: {Math.round(status.progress * 100)}%
-                </p>
+                <div style={{ marginTop: 12, width: "100%", maxWidth: 300 }}>
+                  <div className="ui-progress">
+                    <div
+                      className="ui-progress-fill"
+                      style={{ width: `${clampProgress(status.progress * 100)}%` }}
+                    />
+                  </div>
+                  <p className="num" style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 11 }}>
+                    {Math.round(clampProgress(status.progress * 100))}%
+                  </p>
+                </div>
               )}
             </div>
           ) : status?.status === "failed" ? (

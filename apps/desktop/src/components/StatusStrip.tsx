@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { clampProgress } from "../lib/progress";
 
 interface StatusStripProps {
   mode: string | null;
@@ -76,7 +77,7 @@ export function StatusStrip({
              <span className="sync-icon spinning">↻</span>
              <span className="sync-label">Syncing...</span>
              <div className="sync-progress-track">
-               <div className="sync-progress-fill" style={{ width: `${syncProgress}%` }} />
+               <div className="sync-progress-fill" style={{ width: `${clampProgress(syncProgress)}%` }} />
              </div>
            </div>
         )}

@@ -19,6 +19,13 @@ Updated for every meaningful code change (enforced via pre-commit hook and CI gu
 ---
 
 
+## 2026-02-15T02:26:44Z — Phase 4: Home page overhaul
+
+**What changed**
+- Two-column layout with brand left and getting started tiles right, larger logo 72px, new tagline, full-click tile buttons with hover effects, responsive stacking below 900px, no-scroll discipline
+
+---
+
 ## 2026-02-15T02:26:32Z — Phase 3: Dashboard overhaul
 
 **What changed**

@@ -5,6 +5,16 @@ Chronological record of major implementation prompts.
 ---
 
 
+## Phase 4: Home page overhaul
+
+**Date**: 2026-02-15
+
+### Summary
+
+Two-column layout with brand left and getting started tiles right, larger logo 72px, new tagline, full-click tile buttons with hover effects, responsive stacking below 900px, no-scroll discipline
+
+---
+
 ## Phase 3: Dashboard overhaul
 
 **Date**: 2026-02-15

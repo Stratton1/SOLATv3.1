@@ -19,6 +19,13 @@ Updated for every meaningful code change (enforced via pre-commit hook and CI gu
 ---
 
 
+## 2026-02-16T21:43:42Z — Spread-bet normalization, bootstrap rate-limiting, paper trading endpoints
+
+**What changed**
+- Phase A: Fix spread-bet quote pricing — derive scaling_factor from pip_size for .TODAY./.IFD. epics across /quotes, polling, streaming, controller. Phase B: Staggered enrichment with backoff + retry-failed endpoint (failures 19→3). Phase C: Add /execution/preflight, /paper-start, /paper-stop composite endpoints. 924 tests passing, smoke-tested against IG DEMO.
+
+---
+
 ## 2026-02-15T06:45:00Z — Spread-bet-only account lock + epic migration to IG TODAY/IFD style
 
 **What changed**

@@ -2,6 +2,7 @@
 Instrument catalogue API routes.
 """
 
+import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -116,85 +117,128 @@ async def bootstrap_catalogue(
             unenriched = store.get_unenriched()
             logger.info("Found %d unenriched instruments", len(unenriched))
 
-            for item in unenriched:
-                try:
-                    epic = item.epic
+            # Stagger API calls to respect IG rate limits (2 req/s).
+            stagger_delay_s = 0.5
+            backoff_base_s = 1.0
+            max_retries = 3
 
-                    # If no epic from seed, search for it
-                    if not epic:
-                        search_query = item.search_hint or item.display_name
-                        markets = await client.search_markets(search_query, max_results=5)
+            for idx, item in enumerate(unenriched):
+                # Stagger: wait between items (skip first)
+                if idx > 0:
+                    await asyncio.sleep(stagger_delay_s)
 
-                        if not markets:
-                            item.enrichment_error = f"No markets found for '{search_query}'"
+                retries = 0
+                while retries <= max_retries:
+                    try:
+                        epic = item.epic
+
+                        # If no epic from seed, search for it
+                        if not epic:
+                            search_query = item.search_hint or item.display_name
+                            markets = await client.search_markets(search_query, max_results=5)
+
+                            if not markets:
+                                item.enrichment_error = f"No markets found for '{search_query}'"
+                                item.updated_at = datetime.utcnow()
+                                store.upsert(item)
+                                failed_enrichment += 1
+                                warnings.append(f"{item.symbol}: No markets found")
+                                break
+
+                            # Prefer spread-bet style epics
+                            if prefer_spreadbet_epics:
+                                best_match = next(
+                                    (
+                                        m
+                                        for m in markets
+                                        if ".TODAY." in m.epic or ".IFD." in m.epic
+                                    ),
+                                    markets[0],
+                                )
+                            else:
+                                best_match = markets[0]
+                            epic = best_match.epic
+
+                        # Get detailed market info using epic
+                        details = await client.get_market_details(epic)
+
+                        if details:
+                            item.epic = epic
+                            item.display_name = details.instrument_name or item.display_name
+                            item.currency = details.currency or item.currency
+                            item.lot_size = details.lot_size
+                            item.margin_factor = details.margin_factor
+
+                            # Compute scaling_factor for spread-bet pricing.
+                            # IG does not reliably return scalingFactor for spread-bet
+                            # epics, so derive it from pip_size when applicable.
+                            if details.scaling_factor and details.scaling_factor > 1:
+                                item.scaling_factor = details.scaling_factor
+                            elif (
+                                prefer_spreadbet_epics
+                                and item.pip_size
+                                and float(item.pip_size) > 0
+                            ):
+                                item.scaling_factor = int(round(1.0 / float(item.pip_size)))
+
+                            if details.dealing_rules:
+                                item.dealing_rules = DealingRulesSummary(
+                                    minDealSize=details.dealing_rules.min_deal_size,
+                                    maxDealSize=details.dealing_rules.max_deal_size,
+                                    minSizeIncrement=details.dealing_rules.min_size_increment,
+                                    minStopDistance=(
+                                        details.dealing_rules.min_normal_stop_or_limit_distance
+                                    ),
+                                    maxStopDistance=details.dealing_rules.max_stop_or_limit_distance,
+                                )
+
+                            item.is_enriched = True
+                            item.enrichment_error = None
+                            item.updated_at = datetime.utcnow()
+                            store.upsert(item)
+                            enriched += 1
+                            logger.debug("Enriched %s -> %s", item.symbol, epic)
+                        else:
+                            item.epic = epic
+                            item.enrichment_error = "Could not fetch market details"
                             item.updated_at = datetime.utcnow()
                             store.upsert(item)
                             failed_enrichment += 1
-                            warnings.append(f"{item.symbol}: No markets found")
+                            warnings.append(
+                                f"{item.symbol}: Could not fetch details for {epic}"
+                            )
+                        break  # success — exit retry loop
+
+                    except IGAPIError as e:
+                        is_rate_limit = e.status_code == 403 or "403" in str(e)
+                        if is_rate_limit and retries < max_retries:
+                            delay = backoff_base_s * (2**retries)
+                            retries += 1
+                            logger.warning(
+                                "Rate-limited enriching %s, retry %d/%d in %.1fs",
+                                item.symbol,
+                                retries,
+                                max_retries,
+                                delay,
+                            )
+                            await asyncio.sleep(delay)
                             continue
 
-                        # Prefer spread-bet style epics when account mode is locked to SPREADBET.
-                        if prefer_spreadbet_epics:
-                            best_match = next(
-                                (
-                                    market
-                                    for market in markets
-                                    if ".TODAY." in market.epic or ".IFD." in market.epic
-                                ),
-                                markets[0],
-                            )
-                        else:
-                            best_match = markets[0]
-                        epic = best_match.epic
-
-                    # Get detailed market info using epic
-                    details = await client.get_market_details(epic)
-
-                    if details:
-                        # Update item with IG data
-                        item.epic = epic
-                        item.display_name = details.instrument_name or item.display_name
-                        item.currency = details.currency or item.currency
-                        item.lot_size = details.lot_size
-                        item.margin_factor = details.margin_factor
-
-                        if details.dealing_rules:
-                            item.dealing_rules = DealingRulesSummary(
-                                minDealSize=details.dealing_rules.min_deal_size,
-                                maxDealSize=details.dealing_rules.max_deal_size,
-                                minSizeIncrement=details.dealing_rules.min_size_increment,
-                                minStopDistance=details.dealing_rules.min_normal_stop_or_limit_distance,
-                                maxStopDistance=details.dealing_rules.max_stop_or_limit_distance,
-                            )
-
-                        item.is_enriched = True
-                        item.enrichment_error = None
-                        item.updated_at = datetime.utcnow()
-                        store.upsert(item)
-                        enriched += 1
-                        logger.debug("Enriched %s -> %s", item.symbol, epic)
-                    else:
-                        item.epic = epic
-                        item.enrichment_error = "Could not fetch market details"
+                        item.enrichment_error = str(e)
                         item.updated_at = datetime.utcnow()
                         store.upsert(item)
                         failed_enrichment += 1
-                        warnings.append(f"{item.symbol}: Could not fetch details for {epic}")
+                        warnings.append(f"{item.symbol}: API error - {e}")
+                        break
 
-                except IGAPIError as e:
-                    item.enrichment_error = str(e)
-                    item.updated_at = datetime.utcnow()
-                    store.upsert(item)
-                    failed_enrichment += 1
-                    warnings.append(f"{item.symbol}: API error - {e}")
-
-                except Exception as e:
-                    item.enrichment_error = str(e)
-                    item.updated_at = datetime.utcnow()
-                    store.upsert(item)
-                    failed_enrichment += 1
-                    warnings.append(f"{item.symbol}: Error - {e}")
-                    logger.exception("Error enriching %s", item.symbol)
+                    except Exception as e:
+                        item.enrichment_error = str(e)
+                        item.updated_at = datetime.utcnow()
+                        store.upsert(item)
+                        failed_enrichment += 1
+                        warnings.append(f"{item.symbol}: Error - {e}")
+                        logger.exception("Error enriching %s", item.symbol)
+                        break
 
         except IGAuthError as e:
             warnings.append(f"IG authentication failed: {e}")
@@ -219,6 +263,143 @@ async def bootstrap_catalogue(
         total=final_total,
         warnings=warnings,
         message=f"Bootstrap complete: {created} created, {enriched} enriched",
+    )
+
+
+@router.post("/bootstrap/retry-failed", response_model=BootstrapResponse)
+async def retry_failed_enrichment(
+    settings: Settings = Depends(get_settings_dep),
+    store: CatalogueStore = Depends(get_catalogue_store),
+) -> BootstrapResponse:
+    """
+    Re-enrich only instruments where enrichment previously failed.
+
+    Useful after a rate-limited bootstrap — retries failed items with staggered requests.
+    """
+    if not settings.has_ig_credentials:
+        return BootstrapResponse(
+            ok=False,
+            message="IG credentials not configured",
+            warnings=["IG credentials not configured - cannot enrich"],
+        )
+
+    unenriched = store.get_unenriched()
+    if not unenriched:
+        return BootstrapResponse(
+            ok=True,
+            total=store.count(),
+            message="All instruments already enriched",
+        )
+
+    enriched = 0
+    failed_enrichment = 0
+    warnings: list[str] = []
+    prefer_spreadbet = settings.ig_required_account_type.upper() == "SPREADBET"
+
+    try:
+        from solat_engine.api.ig_routes import get_ig_client
+
+        client = get_ig_client(settings=settings)
+
+        stagger_delay_s = 0.6
+        backoff_base_s = 1.5
+        max_retries = 3
+
+        for idx, item in enumerate(unenriched):
+            if idx > 0:
+                await asyncio.sleep(stagger_delay_s)
+
+            retries = 0
+            while retries <= max_retries:
+                try:
+                    epic = item.epic
+                    if not epic:
+                        search_query = item.search_hint or item.display_name
+                        markets = await client.search_markets(search_query, max_results=5)
+                        if not markets:
+                            failed_enrichment += 1
+                            warnings.append(f"{item.symbol}: No markets found")
+                            break
+                        if prefer_spreadbet:
+                            best_match = next(
+                                (
+                                    m
+                                    for m in markets
+                                    if ".TODAY." in m.epic or ".IFD." in m.epic
+                                ),
+                                markets[0],
+                            )
+                        else:
+                            best_match = markets[0]
+                        epic = best_match.epic
+
+                    details = await client.get_market_details(epic)
+                    if details:
+                        item.epic = epic
+                        item.display_name = details.instrument_name or item.display_name
+                        item.currency = details.currency or item.currency
+                        item.lot_size = details.lot_size
+                        item.margin_factor = details.margin_factor
+                        if details.scaling_factor and details.scaling_factor > 1:
+                            item.scaling_factor = details.scaling_factor
+                        elif (
+                            prefer_spreadbet
+                            and item.pip_size
+                            and float(item.pip_size) > 0
+                        ):
+                            item.scaling_factor = int(round(1.0 / float(item.pip_size)))
+                        if details.dealing_rules:
+                            item.dealing_rules = DealingRulesSummary(
+                                minDealSize=details.dealing_rules.min_deal_size,
+                                maxDealSize=details.dealing_rules.max_deal_size,
+                                minSizeIncrement=details.dealing_rules.min_size_increment,
+                                minStopDistance=(
+                                    details.dealing_rules.min_normal_stop_or_limit_distance
+                                ),
+                                maxStopDistance=details.dealing_rules.max_stop_or_limit_distance,
+                            )
+                        item.is_enriched = True
+                        item.enrichment_error = None
+                        item.updated_at = datetime.utcnow()
+                        store.upsert(item)
+                        enriched += 1
+                    else:
+                        failed_enrichment += 1
+                        warnings.append(f"{item.symbol}: No details for {epic}")
+                    break
+
+                except IGAPIError as e:
+                    is_rate_limit = e.status_code == 403 or "403" in str(e)
+                    if is_rate_limit and retries < max_retries:
+                        delay = backoff_base_s * (2**retries)
+                        retries += 1
+                        logger.warning(
+                            "Rate-limited retry-enriching %s (%d/%d, %.1fs)",
+                            item.symbol, retries, max_retries, delay,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    failed_enrichment += 1
+                    warnings.append(f"{item.symbol}: API error - {e}")
+                    break
+
+                except Exception as e:
+                    failed_enrichment += 1
+                    warnings.append(f"{item.symbol}: Error - {e}")
+                    break
+
+    except IGAuthError as e:
+        warnings.append(f"IG authentication failed: {e}")
+    except Exception as e:
+        warnings.append(f"Enrichment error: {e}")
+
+    return BootstrapResponse(
+        ok=True,
+        enriched=enriched,
+        failed_enrichment=failed_enrichment,
+        total=store.count(),
+        warnings=warnings,
+        message=f"Retry complete: {enriched} enriched, {failed_enrichment} failed",
     )
 
 

@@ -96,9 +96,9 @@ class MarketDataService:
             await self._source.stop()
             self._started = False
 
-    async def subscribe(self, symbol: str, epic: str) -> None:
+    async def subscribe(self, symbol: str, epic: str, scaling_factor: int = 1) -> None:
         if self._source:
-            await self._source.subscribe(symbol, epic)
+            await self._source.subscribe(symbol, epic, scaling_factor=scaling_factor)
             self._subscriptions[symbol] = epic
 
     async def unsubscribe(self, symbol: str) -> None:
@@ -340,11 +340,13 @@ async def subscribe_market_data(
 
     # Subscribe to each symbol
     for symbol in subscribed:
-        epic = items[symbol].epic
+        item = items[symbol]
+        epic = item.epic
         # epic is guaranteed non-None because we filtered in the loop above
         assert epic is not None
-        await service.subscribe(symbol, epic)
-        logger.info("Subscribed to %s (%s)", symbol, epic)
+        sf = getattr(item, "scaling_factor", 1) or 1
+        await service.subscribe(symbol, epic, scaling_factor=sf)
+        logger.info("Subscribed to %s (%s, sf=%d)", symbol, epic, sf)
 
     # Check execution allowlist and warn for symbols not on it
     warnings: list[str] = []

@@ -82,6 +82,10 @@ class InstrumentCatalogueItem(BaseModel):
         default=None,
         description="Margin factor percentage",
     )
+    scaling_factor: int = Field(
+        default=1,
+        description="IG spread-bet scaling factor (e.g. 10000 for EURUSD). Divide raw prices by this.",
+    )
 
     # Dealing rules (from IG)
     dealing_rules: DealingRulesSummary | None = Field(

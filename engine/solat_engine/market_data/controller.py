@@ -133,6 +133,7 @@ class MarketDataController:
 
         self._stats = ControllerStats()
         self._subscriptions: dict[str, str] = {}  # symbol -> epic
+        self._scaling_factors: dict[str, int] = {}  # symbol -> scaling_factor
 
         # Mode sources
         self._streaming_source: StreamingMarketSource | None = None
@@ -262,24 +263,28 @@ class MarketDataController:
 
             self._active_source = None
 
-    async def subscribe(self, symbol: str, epic: str) -> None:
+    async def subscribe(self, symbol: str, epic: str, scaling_factor: int = 1) -> None:
         """
         Subscribe to a symbol.
 
         Args:
             symbol: Canonical symbol
             epic: IG epic identifier
+            scaling_factor: IG spread-bet scaling factor (divide raw prices by this)
         """
         self._subscriptions[symbol] = epic
+        if scaling_factor > 1:
+            self._scaling_factors[symbol] = scaling_factor
 
         if self._active_source:
-            await self._active_source.subscribe(symbol, epic)
+            await self._active_source.subscribe(symbol, epic, scaling_factor=scaling_factor)
             logger.info("Subscribed to %s via %s", symbol, self._stats.current_mode)
 
     async def unsubscribe(self, symbol: str) -> None:
         """Unsubscribe from a symbol."""
         if symbol in self._subscriptions:
             del self._subscriptions[symbol]
+            self._scaling_factors.pop(symbol, None)
 
             if self._active_source:
                 await self._active_source.unsubscribe(symbol)
@@ -287,6 +292,7 @@ class MarketDataController:
     async def unsubscribe_all(self) -> None:
         """Unsubscribe from all symbols."""
         self._subscriptions.clear()
+        self._scaling_factors.clear()
 
         if self._active_source:
             await self._active_source.unsubscribe_all()
@@ -323,9 +329,10 @@ class MarketDataController:
             on_status_change=self._handle_status_change,
         )
 
-        # Add existing subscriptions
+        # Add existing subscriptions (with scaling factors)
         for symbol, epic in self._subscriptions.items():
-            await self._streaming_source.subscribe(symbol, epic)
+            sf = self._scaling_factors.get(symbol, 1)
+            await self._streaming_source.subscribe(symbol, epic, scaling_factor=sf)
 
         await self._streaming_source.start()
 
@@ -367,9 +374,10 @@ class MarketDataController:
             on_quote=self._handle_quote,
         )
 
-        # Add existing subscriptions
+        # Add existing subscriptions (with scaling factors)
         for symbol, epic in self._subscriptions.items():
-            await self._polling_source.subscribe(symbol, epic)
+            sf = self._scaling_factors.get(symbol, 1)
+            await self._polling_source.subscribe(symbol, epic, scaling_factor=sf)
 
         await self._polling_source.start()
 

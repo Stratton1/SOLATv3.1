@@ -5,6 +5,16 @@ Chronological record of major implementation prompts.
 ---
 
 
+## Spread-bet normalization, bootstrap rate-limiting, paper trading endpoints
+
+**Date**: 2026-02-16
+
+### Summary
+
+Phase A: Fix spread-bet quote pricing — derive scaling_factor from pip_size for .TODAY./.IFD. epics across /quotes, polling, streaming, controller. Phase B: Staggered enrichment with backoff + retry-failed endpoint (failures 19→3). Phase C: Add /execution/preflight, /paper-start, /paper-stop composite endpoints. 924 tests passing, smoke-tested against IG DEMO.
+
+---
+
 ## Spread-bet-only lock + epic alignment
 
 **Date**: 2026-02-15  

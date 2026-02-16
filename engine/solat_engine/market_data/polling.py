@@ -45,6 +45,7 @@ class PollingMarketSource:
         self._running = False
         self._task: asyncio.Task[None] | None = None
         self._subscriptions: dict[str, str] = {}  # symbol -> epic
+        self._scaling_factors: dict[str, int] = {}  # symbol -> scaling_factor
         self._last_tick_ts: datetime | None = None
         self._error_count = 0
         self._max_errors = 10
@@ -75,16 +76,19 @@ class PollingMarketSource:
             reconnect_attempts=0,
         )
 
-    async def subscribe(self, symbol: str, epic: str) -> None:
+    async def subscribe(self, symbol: str, epic: str, scaling_factor: int = 1) -> None:
         """
         Subscribe to a symbol.
 
         Args:
             symbol: Symbol to subscribe to
             epic: IG epic identifier
+            scaling_factor: IG spread-bet scaling factor (divide raw prices by this)
         """
         self._subscriptions[symbol] = epic
-        logger.info("Polling: subscribed to %s (%s)", symbol, epic)
+        if scaling_factor > 1:
+            self._scaling_factors[symbol] = scaling_factor
+        logger.info("Polling: subscribed to %s (%s, sf=%d)", symbol, epic, scaling_factor)
 
     async def unsubscribe(self, symbol: str) -> None:
         """
@@ -95,11 +99,13 @@ class PollingMarketSource:
         """
         if symbol in self._subscriptions:
             del self._subscriptions[symbol]
+            self._scaling_factors.pop(symbol, None)
             logger.info("Polling: unsubscribed from %s", symbol)
 
     async def unsubscribe_all(self) -> None:
         """Unsubscribe from all symbols."""
         self._subscriptions.clear()
+        self._scaling_factors.clear()
         logger.info("Polling: unsubscribed from all symbols")
 
     async def start(self) -> None:
@@ -194,8 +200,14 @@ class PollingMarketSource:
                 logger.debug("No bid/offer for %s", symbol)
                 return None
 
-            bid = float(bid)
-            offer = float(offer)
+            bid_f = float(bid)
+            offer_f = float(offer)
+
+            # Normalize spread-bet prices by scaling_factor
+            sf = self._scaling_factors.get(symbol, 1)
+            if sf > 1:
+                bid_f /= sf
+                offer_f /= sf
 
             # Parse update time if available
             update_time = snapshot.get("updateTime")
@@ -203,8 +215,8 @@ class PollingMarketSource:
             return Quote.from_bid_ask(
                 symbol=symbol,
                 epic=epic,
-                bid=bid,
-                ask=offer,
+                bid=bid_f,
+                ask=offer_f,
                 ts_utc=datetime.now(UTC),
                 update_time=update_time,
             )

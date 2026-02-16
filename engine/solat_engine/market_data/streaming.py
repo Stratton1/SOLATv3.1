@@ -73,6 +73,7 @@ class LightstreamerClient:
 
         # Subscriptions: symbol -> epic
         self._subscriptions: dict[str, str] = {}
+        self._scaling_factors: dict[str, int] = {}  # symbol -> scaling_factor
         self._subscription_ids: dict[str, int] = {}  # epic -> subscription id
         self._next_sub_id = 1
 
@@ -125,16 +126,19 @@ class LightstreamerClient:
             last_error=self._last_error,
         )
 
-    async def subscribe(self, symbol: str, epic: str) -> None:
+    async def subscribe(self, symbol: str, epic: str, scaling_factor: int = 1) -> None:
         """
         Subscribe to a symbol.
 
         Args:
             symbol: Canonical symbol (e.g., EURUSD)
             epic: IG epic identifier
+            scaling_factor: IG spread-bet scaling factor (divide raw prices by this)
         """
         self._subscriptions[symbol] = epic
-        logger.info("Streaming: subscribed to %s (%s)", symbol, epic)
+        if scaling_factor > 1:
+            self._scaling_factors[symbol] = scaling_factor
+        logger.info("Streaming: subscribed to %s (%s, sf=%d)", symbol, epic, scaling_factor)
 
         # If connected, add subscription to active session
         if self._connected and self._session_id:
@@ -145,6 +149,7 @@ class LightstreamerClient:
         if symbol in self._subscriptions:
             epic = self._subscriptions[symbol]
             del self._subscriptions[symbol]
+            self._scaling_factors.pop(symbol, None)
             logger.info("Streaming: unsubscribed from %s", symbol)
 
             if self._connected and self._session_id:
@@ -153,6 +158,7 @@ class LightstreamerClient:
     async def unsubscribe_all(self) -> None:
         """Unsubscribe from all symbols."""
         self._subscriptions.clear()
+        self._scaling_factors.clear()
         self._subscription_ids.clear()
         logger.info("Streaming: unsubscribed from all symbols")
 
@@ -414,11 +420,20 @@ class LightstreamerClient:
             if bid is None or offer is None:
                 return None
 
+            bid_f = float(bid)
+            offer_f = float(offer)
+
+            # Normalize spread-bet prices
+            sf = self._scaling_factors.get(symbol, 1)
+            if sf > 1:
+                bid_f /= sf
+                offer_f /= sf
+
             return Quote.from_bid_ask(
                 symbol=symbol,
                 epic=epic,
-                bid=float(bid),
-                ask=float(offer),
+                bid=bid_f,
+                ask=offer_f,
                 ts_utc=datetime.now(UTC),
                 update_time=snapshot.get("updateTime"),
             )
@@ -476,6 +491,12 @@ class LightstreamerClient:
                     bid = float(bid_str)
                     offer = float(offer_str)
                     update_time = fields[2] if len(fields) > 2 else None
+
+                    # Normalize spread-bet prices
+                    sf = self._scaling_factors.get(symbol, 1)
+                    if sf > 1:
+                        bid /= sf
+                        offer /= sf
 
                     quote = Quote.from_bid_ask(
                         symbol=symbol,
@@ -630,9 +651,9 @@ class StreamingMarketSource:
         """Get status."""
         return self._client.get_status()
 
-    async def subscribe(self, symbol: str, epic: str) -> None:
+    async def subscribe(self, symbol: str, epic: str, scaling_factor: int = 1) -> None:
         """Subscribe to symbol."""
-        await self._client.subscribe(symbol, epic)
+        await self._client.subscribe(symbol, epic, scaling_factor=scaling_factor)
 
     async def unsubscribe(self, symbol: str) -> None:
         """Unsubscribe from symbol."""

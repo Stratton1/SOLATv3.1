@@ -406,6 +406,45 @@ class AllowlistGetResponse(BaseModel):
     active: bool = False
 
 
+class PreflightStep(BaseModel):
+    """A single preflight check step."""
+
+    name: str
+    status: bool
+    detail: str | None = None
+
+
+class PreflightResponse(BaseModel):
+    """Response from preflight readiness check."""
+
+    ready: bool
+    steps: list[PreflightStep] = Field(default_factory=list)
+
+
+class PaperStepResult(BaseModel):
+    """Result of a single paper-start/stop step."""
+
+    name: str
+    ok: bool
+    error: str | None = None
+
+
+class PaperStartResponse(BaseModel):
+    """Response from paper-start composite endpoint."""
+
+    ok: bool
+    steps: list[PaperStepResult] = Field(default_factory=list)
+    message: str = ""
+
+
+class PaperStopResponse(BaseModel):
+    """Response from paper-stop composite endpoint."""
+
+    ok: bool
+    steps: list[PaperStepResult] = Field(default_factory=list)
+    message: str = ""
+
+
 # =============================================================================
 # Endpoints
 # =============================================================================
@@ -1355,6 +1394,190 @@ async def get_allowlist(
             active=True,
         )
     return AllowlistGetResponse(symbols=[], active=False)
+
+
+# =============================================================================
+# Paper Trading Pre-Flight
+# =============================================================================
+
+
+@router.get("/preflight", response_model=PreflightResponse)
+async def preflight(
+    exec_router: ExecutionRouter = Depends(get_execution_router),
+) -> PreflightResponse:
+    """
+    Check readiness for paper trading.
+
+    Returns a list of steps with their current status. All steps
+    must be true (or acceptable) for paper trading to proceed.
+    """
+    from solat_engine.autopilot.service import get_autopilot_service
+
+    state = exec_router.state
+    autopilot = get_autopilot_service()
+
+    allowlist = exec_router._symbol_allowlist
+    allowlist_count = len(allowlist) if allowlist else 0
+
+    steps = [
+        PreflightStep(
+            name="ig_connected",
+            status=state.connected,
+            detail="IG broker session active" if state.connected else "Not connected — POST /execution/connect",
+        ),
+        PreflightStep(
+            name="armed",
+            status=state.armed,
+            detail="Execution armed" if state.armed else "Not armed — POST /execution/arm",
+        ),
+        PreflightStep(
+            name="demo_arm_enabled",
+            status=state.demo_arm_enabled,
+            detail="DEMO arm enabled" if state.demo_arm_enabled else "DEMO arm disabled",
+        ),
+        PreflightStep(
+            name="allowlist_loaded",
+            status=allowlist_count > 0,
+            detail=f"{allowlist_count} combos" if allowlist_count > 0 else "No allowlist — POST /execution/allowlist",
+        ),
+        PreflightStep(
+            name="autopilot_enabled",
+            status=bool(autopilot and autopilot._enabled),
+            detail="Autopilot running" if (autopilot and autopilot._enabled) else "Autopilot off — POST /autopilot/enable",
+        ),
+        PreflightStep(
+            name="kill_switch_inactive",
+            status=not state.kill_switch_active,
+            detail="Kill switch clear" if not state.kill_switch_active else "KILL SWITCH ACTIVE — reset required",
+        ),
+    ]
+
+    ready = all(s.status for s in steps)
+    return PreflightResponse(ready=ready, steps=steps)
+
+
+@router.post("/paper-start", response_model=PaperStartResponse)
+async def paper_start(
+    settings: Settings = Depends(get_settings_dep),
+    config: ExecutionConfig = Depends(get_execution_config),
+    exec_router: ExecutionRouter = Depends(get_execution_router),
+    ig_client: AsyncIGClient = Depends(get_ig_client),
+) -> PaperStartResponse:
+    """
+    Composite endpoint to start paper trading.
+
+    Sequences: connect → arm → demo_arm → enable autopilot.
+    Each step is attempted in order. If a step fails, subsequent steps
+    are still attempted where safe, and the failure is reported.
+    """
+    from solat_engine.autopilot.service import get_autopilot_service
+
+    steps: list[PaperStepResult] = []
+    state = exec_router.state
+
+    # Step 1: Connect to IG (skip if already connected)
+    if not state.connected:
+        try:
+            await ig_client.login()
+            result = await exec_router.connect(ig_client, settings=settings)
+            if result.get("ok"):
+                steps.append(PaperStepResult(name="connect", ok=True))
+            else:
+                steps.append(PaperStepResult(name="connect", ok=False, error=result.get("error", "Connection failed")))
+        except Exception as e:
+            steps.append(PaperStepResult(name="connect", ok=False, error=str(e)))
+    else:
+        steps.append(PaperStepResult(name="connect", ok=True))
+
+    # Step 2: Arm execution (skip if already armed)
+    if not exec_router.state.armed:
+        try:
+            result = await exec_router.arm(confirm=True)
+            if result.get("ok"):
+                steps.append(PaperStepResult(name="arm", ok=True))
+            else:
+                steps.append(PaperStepResult(name="arm", ok=False, error=result.get("error")))
+        except Exception as e:
+            steps.append(PaperStepResult(name="arm", ok=False, error=str(e)))
+    else:
+        steps.append(PaperStepResult(name="arm", ok=True))
+
+    # Step 3: Enable demo arm
+    if not exec_router.state.demo_arm_enabled:
+        try:
+            await exec_router.set_demo_arm_enabled(True)
+            steps.append(PaperStepResult(name="demo_arm", ok=True))
+        except Exception as e:
+            steps.append(PaperStepResult(name="demo_arm", ok=False, error=str(e)))
+    else:
+        steps.append(PaperStepResult(name="demo_arm", ok=True))
+
+    # Step 4: Enable autopilot
+    autopilot = get_autopilot_service()
+    if autopilot and not autopilot._enabled:
+        try:
+            ap_state = await autopilot.enable()
+            if ap_state.enabled:
+                steps.append(PaperStepResult(name="autopilot", ok=True))
+            else:
+                reasons = ", ".join(ap_state.blocked_reasons) if ap_state.blocked_reasons else "unknown"
+                steps.append(PaperStepResult(name="autopilot", ok=False, error=f"Blocked: {reasons}"))
+        except Exception as e:
+            steps.append(PaperStepResult(name="autopilot", ok=False, error=str(e)))
+    elif autopilot and autopilot._enabled:
+        steps.append(PaperStepResult(name="autopilot", ok=True))
+    else:
+        steps.append(PaperStepResult(name="autopilot", ok=False, error="Autopilot service not initialized"))
+
+    all_ok = all(s.ok for s in steps)
+    failed = [s.name for s in steps if not s.ok]
+    msg = "Paper trading started" if all_ok else f"Partial start — failed: {', '.join(failed)}"
+
+    return PaperStartResponse(ok=all_ok, steps=steps, message=msg)
+
+
+@router.post("/paper-stop", response_model=PaperStopResponse)
+async def paper_stop(
+    exec_router: ExecutionRouter = Depends(get_execution_router),
+) -> PaperStopResponse:
+    """
+    Composite endpoint to stop paper trading.
+
+    Sequences: disable autopilot → disarm execution.
+    Does NOT close positions (user must do that explicitly).
+    """
+    from solat_engine.autopilot.service import get_autopilot_service
+
+    steps: list[PaperStepResult] = []
+
+    # Step 1: Disable autopilot
+    autopilot = get_autopilot_service()
+    if autopilot and autopilot._enabled:
+        try:
+            await autopilot.disable()
+            steps.append(PaperStepResult(name="autopilot_disable", ok=True))
+        except Exception as e:
+            steps.append(PaperStepResult(name="autopilot_disable", ok=False, error=str(e)))
+    else:
+        steps.append(PaperStepResult(name="autopilot_disable", ok=True))
+
+    # Step 2: Disarm execution
+    if exec_router.state.armed:
+        try:
+            result = await exec_router.disarm()
+            if result.get("ok"):
+                steps.append(PaperStepResult(name="disarm", ok=True))
+            else:
+                steps.append(PaperStepResult(name="disarm", ok=False, error=result.get("error")))
+        except Exception as e:
+            steps.append(PaperStepResult(name="disarm", ok=False, error=str(e)))
+    else:
+        steps.append(PaperStepResult(name="disarm", ok=True))
+
+    all_ok = all(s.ok for s in steps)
+    msg = "Paper trading stopped" if all_ok else "Partial stop — check errors"
+
+    return PaperStopResponse(ok=all_ok, steps=steps, message=msg)
 
 
 # =============================================================================

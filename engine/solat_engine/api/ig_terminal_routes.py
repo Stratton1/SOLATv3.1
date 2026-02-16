@@ -6,10 +6,8 @@ Canonical route surface for account, market data, and order flows.
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -33,7 +31,6 @@ router = APIRouter(tags=["IG Terminal"])
 
 _catalogue_store: CatalogueStore | None = None
 _parquet_store: ParquetStore | None = None
-_DEBUG_LOG_PATH = Path("/Users/joseph/Projects/SOLAT_ALL/solat_v3.1/.cursor/debug.log")
 _bars_fallback_blocked_until: dict[str, datetime] = {}
 _bars_403_cooloff_until: dict[str, datetime] = {}
 
@@ -350,26 +347,6 @@ async def get_quotes(
     catalogue: CatalogueStore = Depends(get_catalogue_store),
     client: Any = Depends(get_ig_client),
 ) -> QuotesResponse:
-    # region agent log H1 H4 endpoint entry
-    try:
-        with _DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
-            f.write(
-                json.dumps(
-                    {
-                        "id": f"log_{int(datetime.now().timestamp()*1000)}_quotes_entry",
-                        "timestamp": int(datetime.now().timestamp() * 1000),
-                        "location": "ig_terminal_routes.py:get_quotes:entry",
-                        "message": "get_quotes called",
-                        "data": {"epics": epics, "symbols": symbols},
-                        "runId": "pre-fix",
-                        "hypothesisId": "H1_H4",
-                    }
-                )
-                + "\n"
-            )
-    except Exception:
-        pass
-    # endregion
     if not settings.has_ig_credentials:
         raise HTTPException(status_code=400, detail="IG credentials not configured")
     by_symbol, by_epic = _catalog_maps(catalogue)
@@ -401,42 +378,34 @@ async def get_quotes(
                 failed.append({"epic": epic, "error": "Bid/ask unavailable"})
                 continue
             mapped = by_epic.get(epic)
-            mid = (float(bid) + float(ask)) / 2.0
+
+            # Normalize spread-bet prices by scaling_factor.
+            # IG returns prices like EURUSD bid=11854.3 (×10000); we normalize to 1.18543.
+            sf = 1
+            if mapped and mapped.scaling_factor and mapped.scaling_factor > 1:
+                sf = mapped.scaling_factor
+            elif details.scaling_factor and details.scaling_factor > 1:
+                sf = details.scaling_factor
+            elif mapped and mapped.pip_size and float(mapped.pip_size) > 0:
+                # Derive from pip_size for spread-bet FX (e.g. 1/0.0001 = 10000)
+                derived = int(round(1.0 / float(mapped.pip_size)))
+                if derived > 1 and (".TODAY." in epic or ".IFD." in epic):
+                    sf = derived
+
+            bid_f = float(bid) / sf
+            ask_f = float(ask) / sf
+            mid = (bid_f + ask_f) / 2.0
+
             quotes[epic] = {
                 "epic": epic,
                 "symbol": mapped.symbol if mapped else None,
-                "bid": float(bid),
-                "ask": float(ask),
+                "bid": bid_f,
+                "ask": ask_f,
                 "last": mid,
                 "time": snap.get("updateTime"),
                 "market_status": snap.get("marketStatus"),
+                "scaling_factor": sf,
             }
-            # region agent log H1 quote populated
-            try:
-                with _DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
-                    f.write(
-                        json.dumps(
-                            {
-                                "id": f"log_{int(datetime.now().timestamp()*1000)}_quotes_value",
-                                "timestamp": int(datetime.now().timestamp() * 1000),
-                                "location": "ig_terminal_routes.py:get_quotes:value",
-                                "message": "quote snapshot mapped",
-                                "data": {
-                                    "epic": epic,
-                                    "symbol": mapped.symbol if mapped else None,
-                                    "bid": float(bid),
-                                    "ask": float(ask),
-                                    "market_status": snap.get("marketStatus"),
-                                },
-                                "runId": "pre-fix",
-                                "hypothesisId": "H1",
-                            }
-                        )
-                        + "\n"
-                    )
-            except Exception:
-                pass
-            # endregion
         except Exception as e:  # noqa: BLE001
             failed.append({"epic": epic, "error": str(e)})
 

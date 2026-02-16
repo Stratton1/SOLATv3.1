@@ -161,6 +161,7 @@ class IGMarketDetails(BaseModel):
     controlled_risk_allowed: bool = Field(default=False, alias="controlledRiskAllowed")
     streaming_prices_available: bool = Field(default=False, alias="streamingPricesAvailable")
     market_status: str | None = Field(default=None, alias="marketStatus")
+    scaling_factor: int | None = Field(default=None, alias="scalingFactor")
     dealing_rules: IGDealingRules | None = Field(default=None, alias="dealingRules")
     snapshot: dict[str, Any] | None = Field(default=None)
 

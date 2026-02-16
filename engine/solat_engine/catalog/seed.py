@@ -262,16 +262,20 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
     # CRYPTO (4)
     # =========================================================================
     CatalogueSeedItem(
-        symbol="BTCUSD",
-        display_name="Bitcoin",
+        symbol="BCHUSD",
+        display_name="Bitcoin Cash",
+        demo_epic="CS.D.BCHUSD.TODAY.IP",
+        live_epic="CS.D.BCHUSD.TODAY.IP",
         asset_class=AssetClass.CRYPTO,
-        search_hint="Bitcoin",
+        search_hint="Bitcoin Cash",
         currency="USD",
         pip_size=Decimal("0.01"),
     ),
     CatalogueSeedItem(
         symbol="ETHUSD",
         display_name="Ethereum",
+        demo_epic="CS.D.ETHUSD.TODAY.IP",
+        live_epic="CS.D.ETHUSD.TODAY.IP",
         asset_class=AssetClass.CRYPTO,
         search_hint="Ethereum",
         currency="USD",
@@ -280,6 +284,8 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
     CatalogueSeedItem(
         symbol="LTCUSD",
         display_name="Litecoin",
+        demo_epic="CS.D.LTCUSD.TODAY.IP",
+        live_epic="CS.D.LTCUSD.TODAY.IP",
         asset_class=AssetClass.CRYPTO,
         search_hint="Litecoin",
         currency="USD",
@@ -288,6 +294,8 @@ SEED_INSTRUMENTS: list[CatalogueSeedItem] = [
     CatalogueSeedItem(
         symbol="XRPUSD",
         display_name="Ripple",
+        demo_epic="CS.D.XRPUSD.TODAY.IP",
+        live_epic="CS.D.XRPUSD.TODAY.IP",
         asset_class=AssetClass.CRYPTO,
         search_hint="Ripple",
         currency="USD",

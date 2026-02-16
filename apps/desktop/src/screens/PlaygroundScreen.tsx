@@ -11,7 +11,7 @@ import { useState, useEffect, useCallback } from "react";
 import { SummaryBar } from "../components/ui/SummaryBar";
 import { Panel } from "../components/ui/Panel";
 import { EmptyState } from "../components/ui/EmptyState";
-import { useEngineHealth } from "../hooks/useEngineHealth";
+import { useEngineConnection } from "../context/EngineConnectionContext";
 import { engineClient, Bar, OverlayResult } from "../lib/engineClient";
 import { CandleChart } from "../components/CandleChart";
 
@@ -36,7 +36,7 @@ const SYMBOLS = [
 const TIMEFRAMES = ["1h", "4h"];
 
 export function PlaygroundScreen() {
-  const { health } = useEngineHealth();
+  const { health } = useEngineConnection();
   const [symbol, setSymbol] = useState("EURUSD");
   const [timeframe, setTimeframe] = useState("1h");
   const [activeIndicators, setActiveIndicators] = useState<Set<string>>(

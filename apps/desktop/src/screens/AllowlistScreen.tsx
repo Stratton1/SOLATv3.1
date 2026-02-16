@@ -13,7 +13,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { SummaryBar } from "../components/ui/SummaryBar";
 import { Panel } from "../components/ui/Panel";
 import { EmptyState } from "../components/ui/EmptyState";
-import { useEngineHealth } from "../hooks/useEngineHealth";
+import { useEngineConnection } from "../context/EngineConnectionContext";
 import { engineClient, AllowlistEntry } from "../lib/engineClient";
 import { CATEGORIES, getBotById } from "../lib/elite8Meta";
 
@@ -21,7 +21,7 @@ type SortField = "symbol" | "bot" | "timeframe" | "sharpe" | "win_rate" | "total
 type SortDir = "asc" | "desc";
 
 export function AllowlistScreen() {
-  const { health } = useEngineHealth();
+  const { health } = useEngineConnection();
   const [entries, setEntries] = useState<AllowlistEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

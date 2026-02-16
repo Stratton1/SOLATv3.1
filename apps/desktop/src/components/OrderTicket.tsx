@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { engineClient } from "../lib/engineClient";
 import { useToast } from "../context/ToastContext";
 
@@ -16,7 +16,7 @@ export function OrderTicket({ symbol, price, onClose }: OrderTicketProps) {
   const [limitPrice, setLimitPrice] = useState(price || 0);
   const [sl, setSl] = useState<number | "">("");
   const [tp, setTp] = useState<number | "">("");
-  const [riskPct, setRiskPct] = useState<number | "">("");
+  const [, setRiskPct] = useState<number | "">("");
 
   // Account for risk calc (mocked for now, should come from context)
   const accountBalance = 10000; 

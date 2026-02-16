@@ -5,7 +5,7 @@
 
 import { useNavigate } from "react-router-dom";
 import { SummaryBar } from "../components/ui/SummaryBar";
-import { useEngineHealth } from "../hooks/useEngineHealth";
+import { useEngineConnection } from "../context/EngineConnectionContext";
 
 const SETUP_STEPS = [
   { num: 1, text: "Sync historical data from your broker", link: "/system", linkText: "System" },
@@ -18,7 +18,7 @@ const SETUP_STEPS = [
 
 export function IntroScreen() {
   const navigate = useNavigate();
-  const { health } = useEngineHealth();
+  const { health } = useEngineConnection();
 
   return (
     <div className="screen-layout">

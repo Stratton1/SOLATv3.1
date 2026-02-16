@@ -71,7 +71,17 @@ const THEME = {
   exitYellow: "#f7b955",
   slRed: "#f45b69",
   tpGreen: "#00d68f",
+  rrLabel: "#a0a0b0",
 };
+
+/** Pip size for R:R pip-distance labels. */
+function getPipSize(symbol: string): number {
+  const s = (symbol ?? "").toUpperCase();
+  if (s.includes("JPY")) return 0.01;
+  if (s.startsWith("XAU")) return 0.1;
+  if (s.startsWith("XAG")) return 0.01;
+  return 0.0001;
+}
 
 // Strategy colors — 9 distinct colors for signal markers
 const STRATEGY_COLORS: Record<string, string> = {
@@ -568,6 +578,76 @@ export function CandleChart({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const stableShapes = useMemo(() => shapes, [shapesKey]);
 
+  // R:R annotations for signal SL/TP zones
+  const annotations: Partial<Plotly.Annotations>[] = useMemo(() => {
+    const ann: Partial<Plotly.Annotations>[] = [];
+    const pip = getPipSize(symbol ?? "");
+    const latestByStrategy = new Map<string, Signal>();
+    for (const sig of signals) {
+      if (sig.strategy) latestByStrategy.set(sig.strategy, sig);
+    }
+    for (const [, sig] of latestByStrategy) {
+      if (sig.price == null) continue;
+      const entry = sig.price;
+      const hasSl = sig.stop_loss != null;
+      const hasTp = sig.take_profit != null;
+
+      if (hasSl) {
+        const slDist = Math.abs(entry - sig.stop_loss!);
+        const slPips = Math.round(slDist / pip);
+        ann.push({
+          xref: "paper",
+          yref: "y",
+          x: 0.98,
+          y: sig.stop_loss!,
+          text: `SL ${slPips}p`,
+          showarrow: false,
+          font: { size: 9, color: THEME.slRed },
+          xanchor: "right",
+          bgcolor: "rgba(30,30,46,0.7)",
+        });
+      }
+
+      if (hasTp) {
+        const tpDist = Math.abs(sig.take_profit! - entry);
+        const tpPips = Math.round(tpDist / pip);
+        ann.push({
+          xref: "paper",
+          yref: "y",
+          x: 0.98,
+          y: sig.take_profit!,
+          text: `TP ${tpPips}p`,
+          showarrow: false,
+          font: { size: 9, color: THEME.tpGreen },
+          xanchor: "right",
+          bgcolor: "rgba(30,30,46,0.7)",
+        });
+      }
+
+      if (hasSl && hasTp) {
+        const risk = Math.abs(entry - sig.stop_loss!);
+        const reward = Math.abs(sig.take_profit! - entry);
+        const rr = risk > 0 ? (reward / risk).toFixed(1) : "—";
+        ann.push({
+          xref: "paper",
+          yref: "y",
+          x: 0.98,
+          y: entry,
+          text: `R:R ${rr}:1`,
+          showarrow: false,
+          font: { size: 9, color: THEME.rrLabel },
+          xanchor: "right",
+          bgcolor: "rgba(30,30,46,0.7)",
+        });
+      }
+    }
+    return ann;
+  }, [signals, symbol]);
+
+  const annotationsKey = useMemo(() => JSON.stringify(annotations), [annotations]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableAnnotations = useMemo(() => annotations, [annotationsKey]);
+
   // Layout with shapes — use autosize to fill container
   const layout: Partial<Plotly.Layout> = useMemo(
     () => ({
@@ -589,6 +669,7 @@ export function CandleChart({
         autorange: true,
       },
       shapes: stableShapes,
+      annotations: stableAnnotations,
       margin: { l: 10, r: 60, t: 10, b: 30 },
       hovermode: "x unified" as const,
       hoverlabel: {
@@ -598,7 +679,7 @@ export function CandleChart({
       },
       dragmode: activeTool === "select" ? ("pan" as const) : (false as const),
     }),
-    [height, stableShapes, activeTool, xRange, showRangeSlider]
+    [height, stableShapes, stableAnnotations, activeTool, xRange, showRangeSlider]
   );
 
   const config: Partial<Plotly.Config> = useMemo(

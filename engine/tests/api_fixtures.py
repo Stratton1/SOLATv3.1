@@ -53,6 +53,8 @@ class TestSettings:
     ig_max_retries: int = 3
     ig_rate_limit_rps: float = 2.0
     ig_rate_limit_burst: int = 10
+    ig_required_account_type: str = "SPREADBET"
+    ig_strict_account_type: bool = False
     history_max_rows_per_call: int = 50000
     _has_ig_credentials_override: bool | None = field(default=None, repr=False)
 

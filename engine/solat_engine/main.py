@@ -6,10 +6,12 @@ Provides REST API and WebSocket endpoints for the desktop terminal.
 """
 
 import asyncio
+import json
 import os
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import psutil
@@ -26,6 +28,7 @@ from solat_engine.api.diagnostics_routes import router as diagnostics_router
 from solat_engine.api.diagnostics_routes import set_ws_clients_ref
 from solat_engine.api.execution_routes import router as execution_router
 from solat_engine.api.ig_routes import router as ig_router
+from solat_engine.api.ig_terminal_routes import router as ig_terminal_router
 from solat_engine.api.market_data_routes import router as market_data_router
 from solat_engine.api.optimization_routes import router as optimization_router
 from solat_engine.api.autopilot_routes import router as autopilot_router
@@ -39,6 +42,7 @@ from solat_engine.scheduler.service import SchedulerService
 # Setup logging
 setup_logging(level=get_settings().log_level)
 logger = get_logger(__name__)
+_DEBUG_LOG_PATH = Path("/Users/joseph/Projects/SOLAT_ALL/solat_v3.1/.cursor/debug.log")
 
 
 # =============================================================================
@@ -274,12 +278,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             if not state.execution_compressor.should_deliver(event):
                 return  # Skip compressed/deduplicated events
 
-            message = {
-                "type": event.type.value,
-                "run_id": event.run_id,
-                "timestamp": event.timestamp.isoformat(),
-                **event.data,
+            order_event_types = {
+                EventType.EXECUTION_INTENT_CREATED,
+                EventType.EXECUTION_ORDER_SUBMITTED,
+                EventType.EXECUTION_ORDER_REJECTED,
+                EventType.EXECUTION_ORDER_ACKNOWLEDGED,
             }
+            if event.type in order_event_types:
+                message = {
+                    "type": "order_event",
+                    "event": event.type.value,
+                    "run_id": event.run_id,
+                    "timestamp": event.timestamp.isoformat(),
+                    **event.data,
+                }
+            elif event.type == EventType.EXECUTION_POSITIONS_UPDATED:
+                message = {
+                    "type": "position_event",
+                    "event": event.type.value,
+                    "run_id": event.run_id,
+                    "timestamp": event.timestamp.isoformat(),
+                    **event.data,
+                }
+            else:
+                message = {
+                    "type": "execution_event",
+                    "event": event.type.value,
+                    "run_id": event.run_id,
+                    "timestamp": event.timestamp.isoformat(),
+                    **event.data,
+                }
             disconnected: list[WebSocket] = []
             for ws in state.websocket_clients:
                 try:
@@ -309,11 +337,52 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             EventType.BROKER_CONNECTED,
             EventType.BROKER_DISCONNECTED,
         ):
-            message = {
-                "type": event.type.value,
-                "timestamp": event.timestamp.isoformat(),
-                **event.data,
-            }
+            # region agent log H2 H3 H4 forwarding path
+            try:
+                with _DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
+                    f.write(
+                        json.dumps(
+                            {
+                                "id": f"log_{int(datetime.now(UTC).timestamp() * 1000)}_mkt_evt",
+                                "timestamp": int(datetime.now(UTC).timestamp() * 1000),
+                                "location": "main.py:forward_market_data_events",
+                                "message": "market event forwarding",
+                                "data": {
+                                    "event_type": event.type.value,
+                                    "clients": len(state.websocket_clients),
+                                    "symbol": event.data.get("symbol"),
+                                    "epic": event.data.get("epic"),
+                                    "bid": event.data.get("bid"),
+                                    "ask": event.data.get("ask"),
+                                },
+                                "runId": "pre-fix",
+                                "hypothesisId": "H2_H3_H4",
+                            }
+                        )
+                        + "\n"
+                    )
+            except Exception:
+                pass
+            # endregion
+            if event.type == EventType.QUOTE_RECEIVED:
+                message = {
+                    "type": "quote_update",
+                    "timestamp": event.timestamp.isoformat(),
+                    **event.data,
+                }
+            elif event.type == EventType.BAR_RECEIVED:
+                message = {
+                    "type": "bar_update",
+                    "timestamp": event.timestamp.isoformat(),
+                    **event.data,
+                }
+            else:
+                message = {
+                    "type": "market_status",
+                    "timestamp": event.timestamp.isoformat(),
+                    "connected": event.type == EventType.BROKER_CONNECTED,
+                    **event.data,
+                }
             disconnected: list[WebSocket] = []
             for ws in state.websocket_clients:
                 try:
@@ -436,6 +505,7 @@ app.add_middleware(
 
 # Include API routers
 app.include_router(ig_router)
+app.include_router(ig_terminal_router)
 app.include_router(catalog_router)
 app.include_router(data_router)
 app.include_router(backtest_router)
@@ -632,6 +702,26 @@ async def websocket_endpoint(
     """
     await websocket.accept()
     state.websocket_clients.append(websocket)
+    # region agent log H3 H5 ws connect
+    try:
+        with _DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "id": f"log_{int(datetime.now(UTC).timestamp() * 1000)}_ws_conn",
+                        "timestamp": int(datetime.now(UTC).timestamp() * 1000),
+                        "location": "main.py:websocket_endpoint:connect",
+                        "message": "ws client connected",
+                        "data": {"clients": len(state.websocket_clients)},
+                        "runId": "pre-fix",
+                        "hypothesisId": "H3_H5",
+                    }
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
+    # endregion
     logger.info("WebSocket client connected. Total clients: %d", len(state.websocket_clients))
 
     try:
@@ -657,6 +747,26 @@ async def websocket_endpoint(
     finally:
         if websocket in state.websocket_clients:
             state.websocket_clients.remove(websocket)
+        # region agent log H3 H5 ws disconnect
+        try:
+            with _DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "id": f"log_{int(datetime.now(UTC).timestamp() * 1000)}_ws_disc",
+                            "timestamp": int(datetime.now(UTC).timestamp() * 1000),
+                            "location": "main.py:websocket_endpoint:disconnect",
+                            "message": "ws client disconnected",
+                            "data": {"clients": len(state.websocket_clients)},
+                            "runId": "pre-fix",
+                            "hypothesisId": "H3_H5",
+                        }
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
+        # endregion
         logger.info(
             "WebSocket client disconnected. Total clients: %d",
             len(state.websocket_clients),

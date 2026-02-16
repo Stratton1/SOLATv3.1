@@ -44,6 +44,9 @@ def mock_settings() -> MagicMock:
     settings.ig_rate_limit_rps = 100.0  # High rate to avoid delays in tests
     settings.ig_rate_limit_burst = 100
     settings.has_ig_credentials = True
+    settings.ig_account_id = None
+    settings.ig_required_account_type = "SPREADBET"
+    settings.ig_strict_account_type = False
     return settings
 
 
@@ -63,7 +66,7 @@ def mock_login_response() -> dict:
     """Create mock login response data."""
     return {
         "clientId": "12345",
-        "currentAccountId": "ABC123",
+        "currentAccountId": "DEF456",
         "timezoneOffset": 0,
         "lightstreamerEndpoint": "https://apd.ig.com/push",
         "accounts": [
@@ -73,7 +76,7 @@ def mock_login_response() -> dict:
                 "accountType": "CFD",
                 "status": "ENABLED",
                 "currency": "GBP",
-                "preferred": True,
+                "preferred": False,
             },
             {
                 "accountId": "DEF456",
@@ -81,7 +84,7 @@ def mock_login_response() -> dict:
                 "accountType": "SPREADBET",
                 "status": "ENABLED",
                 "currency": "GBP",
-                "preferred": False,
+                "preferred": True,
             },
         ],
     }
@@ -180,7 +183,7 @@ class TestIGClientLogin:
 
         assert route.called
         assert ig_client.is_authenticated
-        assert response.account_id == "ABC123"
+        assert response.account_id == "DEF456"
         assert len(response.accounts) == 2
         assert response.lightstreamer_endpoint == "https://apd.ig.com/push"
 
@@ -227,6 +230,8 @@ class TestIGClientLogin:
         settings.ig_max_retries = 1
         settings.ig_rate_limit_rps = 10.0
         settings.ig_rate_limit_burst = 5
+        settings.ig_required_account_type = "SPREADBET"
+        settings.ig_strict_account_type = False
         logger = get_logger("test")
         client = AsyncIGClient(settings, logger)
 

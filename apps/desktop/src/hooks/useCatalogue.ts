@@ -37,7 +37,7 @@ export function useCatalogue(): UseCatalogueResult {
   }, [fetch]);
 
   const getBySymbol = useCallback(
-    (symbol: string) => items.find((item) => item.symbol === symbol),
+    (symbol: string) => items.find((item) => item.symbol.toUpperCase() === symbol.toUpperCase()),
     [items]
   );
 

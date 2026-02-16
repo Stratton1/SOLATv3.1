@@ -91,9 +91,11 @@ async def bootstrap_catalogue(
     """
     # First, bootstrap from seed
     seed_items = get_seed_instruments()
+    prefer_spreadbet_epics = settings.ig_required_account_type.upper() == "SPREADBET"
     bootstrap_result = store.bootstrap(
         seed_items,
-        is_live=settings.is_live,
+        # Spread-betting epics use TODAY/IFD style identifiers, including in DEMO environments.
+        is_live=settings.is_live or prefer_spreadbet_epics,
     )
 
     created = bootstrap_result["created"]
@@ -131,8 +133,18 @@ async def bootstrap_catalogue(
                             warnings.append(f"{item.symbol}: No markets found")
                             continue
 
-                        # Pick best match (first result for now)
-                        best_match = markets[0]
+                        # Prefer spread-bet style epics when account mode is locked to SPREADBET.
+                        if prefer_spreadbet_epics:
+                            best_match = next(
+                                (
+                                    market
+                                    for market in markets
+                                    if ".TODAY." in market.epic or ".IFD." in market.epic
+                                ),
+                                markets[0],
+                            )
+                        else:
+                            best_match = markets[0]
                         epic = best_match.epic
 
                     # Get detailed market info using epic

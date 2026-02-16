@@ -203,6 +203,37 @@ class CatalogueStore:
             "total": len(existing),
         }
 
+    def sync_epics_from_seed(
+        self,
+        seed_items: list[CatalogueSeedItem],
+        is_live: bool = False,
+    ) -> dict[str, int]:
+        """
+        Align existing instrument epics with seed-defined epics.
+
+        Useful when switching account style (e.g. CFD -> SPREADBET) so existing
+        catalogue rows are migrated to the correct epic family.
+        """
+        items = self.load()
+        by_symbol = {item.symbol.upper(): item for item in items}
+        updated = 0
+        for seed in seed_items:
+            target_epic = seed.live_epic if is_live else seed.demo_epic
+            if not target_epic:
+                continue
+            existing = by_symbol.get(seed.symbol.upper())
+            if existing is None:
+                continue
+            if existing.epic != target_epic:
+                existing.epic = target_epic
+                existing.updated_at = datetime.utcnow()
+                existing.is_enriched = False
+                existing.enrichment_error = None
+                updated += 1
+        if updated:
+            self.save(items)
+        return {"updated": updated, "total": len(items)}
+
     def get_by_asset_class(self, asset_class: AssetClass) -> list[InstrumentCatalogueItem]:
         """
         Get instruments by asset class.

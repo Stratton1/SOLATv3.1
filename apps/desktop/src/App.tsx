@@ -18,9 +18,8 @@ import { StatusStrip } from "./components/StatusStrip";
 import { CommandPalette } from "./components/CommandPalette";
 import { Sidebar } from "./components/Sidebar";
 import { ToastProvider } from "./context/ToastContext";
-import { useEngineHealth } from "./hooks/useEngineHealth";
 import { useEngineLauncher } from "./hooks/useEngineLauncher";
-import { useWebSocket } from "./hooks/useWebSocket";
+import { EngineConnectionProvider, useEngineConnection } from "./context/EngineConnectionContext";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { GuideDrawer } from "./components/GuideDrawer";
 
@@ -36,8 +35,10 @@ function AppContent() {
     retryCount,
     nextRetryIn,
     manualRetry,
-  } = useEngineHealth();
-  const { heartbeatCount, isConnected, connectionStatus } = useWebSocket();
+    heartbeatCount,
+    isConnected,
+    connectionStatus,
+  } = useEngineConnection();
   const { startEngine, isStarting: isStartingEngine } = useEngineLauncher();
 
   // Command palette + guide state
@@ -193,7 +194,9 @@ function App() {
   return (
     <BrowserRouter>
       <ToastProvider>
-        <AppContent />
+        <EngineConnectionProvider>
+          <AppContent />
+        </EngineConnectionProvider>
       </ToastProvider>
     </BrowserRouter>
   );

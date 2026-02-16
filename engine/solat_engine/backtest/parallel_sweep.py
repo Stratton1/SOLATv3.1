@@ -18,7 +18,7 @@ import tempfile
 import time
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
 from multiprocessing import cpu_count
 from pathlib import Path
@@ -33,6 +33,11 @@ from solat_engine.backtest.models import (
     SpreadConfig,
 )
 from solat_engine.logging import get_logger
+from solat_engine.reporting.sweep_report import (
+    SweepReportMetadata,
+    generate_sweep_report,
+    rows_from_combo_results,
+)
 
 logger = get_logger(__name__)
 
@@ -113,67 +118,61 @@ class ComboResult:
     max_consecutive_wins: int = 0
     max_consecutive_losses: int = 0
     total_transaction_costs: float = 0.0
+    # Extended v2 fields (added for canonical reporting)
+    winning_trades: int = 0
+    losing_trades: int = 0
+    long_trades: int = 0
+    short_trades: int = 0
+    largest_win: float = 0.0
+    largest_loss: float = 0.0
+    cagr: float = 0.0
+    duration_days: float = 0.0
+    bar_count: int = 0
+    data_start: str = ""
+    data_end: str = ""
+    rejected_orders: int = 0
+    total_orders: int = 0
+    trades_per_day: float = 0.0
+    avg_bars_held: float = 0.0
+    median_trade_return_pct: float = 0.0
+    max_drawdown_duration_bars: int = 0
+    avg_drawdown_pct: float = 0.0
+    avg_spread_paid: float = 0.0
+    avg_slippage: float = 0.0
+    # Extended v3 fields (full MetricsSummary coverage)
+    initial_cash: float = 0.0
+    start_equity: float = 0.0
+    end_equity: float = 0.0
+    equity_peak: float = 0.0
+    max_drawdown_abs: float = 0.0
+    downside_volatility: float = 0.0
+    median_bars_held: float = 0.0
+    avg_win: float = 0.0
+    avg_loss: float = 0.0
+    skewness: float = 0.0
+    kurtosis: float = 0.0
+    filled_orders: int = 0
+    partial_fills_count: int = 0
+    total_spread_cost: float = 0.0
+    total_slippage_cost: float = 0.0
+    total_fees: float = 0.0
+    annualized_return: float = 0.0
+    exposure_adjusted_return: float = 0.0
+    avg_drawdown_duration_bars: float = 0.0
+    avg_exposure: float = 0.0
+    max_exposure: float = 0.0
+    warnings_count: int = 0
+    missing_bar_pct: float = 0.0
+    data_gaps_detected: int = 0
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "combo_id": self.combo_id,
-            "bot": self.bot,
-            "symbol": self.symbol,
-            "timeframe": self.timeframe,
-            "success": self.success,
-            "sharpe": self.sharpe,
-            "max_drawdown": self.max_drawdown,
-            "win_rate": self.win_rate,
-            "total_trades": self.total_trades,
-            "pnl": self.pnl,
-            "sortino": self.sortino,
-            "profit_factor": self.profit_factor,
-            "avg_trade_pnl": self.avg_trade_pnl,
-            "error": self.error,
-            "duration_s": self.duration_s,
-            "skipped": self.skipped,
-            "skip_reason": self.skip_reason,
-            "calmar": self.calmar,
-            "expectancy": self.expectancy,
-            "payoff_ratio": self.payoff_ratio,
-            "total_return_pct": self.total_return_pct,
-            "volatility": self.volatility,
-            "time_in_market_pct": self.time_in_market_pct,
-            "max_consecutive_wins": self.max_consecutive_wins,
-            "max_consecutive_losses": self.max_consecutive_losses,
-            "total_transaction_costs": self.total_transaction_costs,
-        }
+        return {f.name: getattr(self, f.name) for f in fields(self)}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "ComboResult":
-        return cls(
-            combo_id=d["combo_id"],
-            bot=d["bot"],
-            symbol=d["symbol"],
-            timeframe=d["timeframe"],
-            success=d["success"],
-            sharpe=d.get("sharpe", 0.0),
-            max_drawdown=d.get("max_drawdown", 0.0),
-            win_rate=d.get("win_rate", 0.0),
-            total_trades=d.get("total_trades", 0),
-            pnl=d.get("pnl", 0.0),
-            sortino=d.get("sortino", 0.0),
-            profit_factor=d.get("profit_factor", 0.0),
-            avg_trade_pnl=d.get("avg_trade_pnl", 0.0),
-            error=d.get("error"),
-            duration_s=d.get("duration_s", 0.0),
-            skipped=d.get("skipped", False),
-            skip_reason=d.get("skip_reason"),
-            calmar=d.get("calmar", 0.0),
-            expectancy=d.get("expectancy", 0.0),
-            payoff_ratio=d.get("payoff_ratio", 0.0),
-            total_return_pct=d.get("total_return_pct", 0.0),
-            volatility=d.get("volatility", 0.0),
-            time_in_market_pct=d.get("time_in_market_pct", 0.0),
-            max_consecutive_wins=d.get("max_consecutive_wins", 0),
-            max_consecutive_losses=d.get("max_consecutive_losses", 0),
-            total_transaction_costs=d.get("total_transaction_costs", 0.0),
-        )
+        valid_fields = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in d.items() if k in valid_fields}
+        return cls(**filtered)
 
 
 def compute_combo_id(
@@ -323,6 +322,52 @@ def _run_single_combo(args: tuple[Any, ...]) -> ComboResult:
                 max_consecutive_wins=m.max_consecutive_wins,
                 max_consecutive_losses=m.max_consecutive_losses,
                 total_transaction_costs=m.total_transaction_costs or 0.0,
+                # v2 fields from MetricsSummary
+                winning_trades=m.winning_trades,
+                losing_trades=m.losing_trades,
+                long_trades=m.long_trades,
+                short_trades=m.short_trades,
+                largest_win=m.largest_win or 0.0,
+                largest_loss=m.largest_loss or 0.0,
+                cagr=m.cagr or 0.0,
+                duration_days=m.duration_days or 0.0,
+                bar_count=m.bar_count,
+                data_start=str(m.data_start)[:10] if m.data_start else "",
+                data_end=str(m.data_end)[:10] if m.data_end else "",
+                rejected_orders=m.rejected_orders,
+                total_orders=m.total_orders,
+                trades_per_day=m.trades_per_day or 0.0,
+                avg_bars_held=m.avg_bars_held or 0.0,
+                median_trade_return_pct=m.median_trade_return_pct or 0.0,
+                max_drawdown_duration_bars=m.max_drawdown_duration_bars,
+                avg_drawdown_pct=m.avg_drawdown_pct or 0.0,
+                avg_spread_paid=m.avg_spread_paid or 0.0,
+                avg_slippage=m.avg_slippage or 0.0,
+                # v3 fields
+                initial_cash=m.initial_cash or 0.0,
+                start_equity=m.start_equity or 0.0,
+                end_equity=m.end_equity or 0.0,
+                equity_peak=m.equity_peak or 0.0,
+                max_drawdown_abs=m.max_drawdown or 0.0,
+                downside_volatility=m.downside_volatility or 0.0,
+                median_bars_held=m.median_bars_held or 0.0,
+                avg_win=m.avg_win or 0.0,
+                avg_loss=m.avg_loss or 0.0,
+                skewness=m.skewness or 0.0,
+                kurtosis=m.kurtosis or 0.0,
+                filled_orders=m.filled_orders,
+                partial_fills_count=m.partial_fills_count,
+                total_spread_cost=m.total_spread_cost or 0.0,
+                total_slippage_cost=m.total_slippage_cost or 0.0,
+                total_fees=m.total_fees or 0.0,
+                annualized_return=m.annualized_return or 0.0,
+                exposure_adjusted_return=m.exposure_adjusted_return or 0.0,
+                avg_drawdown_duration_bars=m.avg_drawdown_duration_bars or 0.0,
+                avg_exposure=m.avg_exposure or 0.0,
+                max_exposure=m.max_exposure or 0.0,
+                warnings_count=m.warnings_count,
+                missing_bar_pct=m.missing_bar_pct or 0.0,
+                data_gaps_detected=m.data_gaps_detected,
             )
         else:
             return ComboResult(
@@ -673,6 +718,27 @@ class ParallelSweepRunner:
         # Write consolidated results (with optional min_trades filter for output)
         self._write_results(sweep_dir, all_results, min_trades=min_trades)
 
+        # Canonical sidecar report in markdown/csv/json.
+        report_rows = rows_from_combo_results(all_results, pass_id="parallel")
+        report_meta = SweepReportMetadata(
+            sweep_name=f"Parallel Sweep {sweep_id}",
+            dataset=f"{start.date()} to {end.date()}",
+            grid_description=f"{len(bots)} bots × {len(symbols)} symbols × {len(timeframes)} TFs",
+            bots=bots,
+            symbols=symbols,
+            timeframes=timeframes,
+            date_start=start.date().isoformat(),
+            date_end=end.date().isoformat(),
+            notes=f"workers={self.max_workers}",
+        )
+        report_outputs = generate_sweep_report(
+            report_rows,
+            report_meta,
+            sweep_dir,
+            top_n=20,
+            include_full_table=False,
+        )
+
         completed_at = datetime.now(UTC)
         duration = (completed_at - started_at).total_seconds()
 
@@ -704,6 +770,8 @@ class ParallelSweepRunner:
             "sweep_dir": str(sweep_dir),
             "results_path": str(sweep_dir / "results.csv"),
             "results_parquet_path": str(sweep_dir / "results.parquet"),
+            "report_outputs": {k: str(v) for k, v in report_outputs.items()},
+            "combo_results": all_results,
         }
 
     def _find_resumable_sweep(self, request_hash: str) -> Path | None:

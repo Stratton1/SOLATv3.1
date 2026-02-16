@@ -35,7 +35,7 @@ from multiprocessing import cpu_count
 
 import pandas as pd
 
-from solat_engine.backtest.parallel_sweep import ParallelSweepRunner
+from solat_engine.backtest.parallel_sweep import ComboResult, ParallelSweepRunner
 from solat_engine.backtest.sweep_utils import (
     DEFAULT_TIMEFRAMES_ALL,
     DEFAULT_TIMEFRAMES_FULL,
@@ -54,6 +54,11 @@ from solat_engine.backtest.sweep_utils import (
     resolve_symbols_from_catalogue,
 )
 from solat_engine.catalog.symbols import resolve_storage_symbol
+from solat_engine.reporting.sweep_report import (
+    SweepReportMetadata,
+    generate_sweep_report,
+    rows_from_combo_results,
+)
 from solat_engine.strategies.elite8_hardened import get_available_bots
 
 # Configuration
@@ -700,6 +705,38 @@ def main():
     # Print summary
     print_summary(results_csv, args.min_trades, include_aggregates=args.include_aggregates)
 
+    # =========================================================================
+    # F) Generate canonical sweep report (Markdown + CSV + JSON)
+    # =========================================================================
+    combo_results: list[ComboResult] = result.get("combo_results", [])
+    if combo_results:
+        report_rows = rows_from_combo_results(combo_results)
+    else:
+        report_rows = []
+
+    if report_rows:
+        report_metadata = SweepReportMetadata(
+            sweep_name=f"Grand Sweep — {scope_label}",
+            dataset=f"{args.start} to {args.end}",
+            grid_description=(
+                f"{len(sweep_bots)} bots × {len(sweep_symbols)} symbols "
+                f"× {len(sweep_timeframes)} TFs"
+            ),
+            bots=sweep_bots,
+            symbols=sweep_symbols,
+            timeframes=sweep_timeframes,
+            date_start=args.start,
+            date_end=args.end,
+            notes=f"Scope: {args.scope}, workers: {workers}",
+        )
+
+        report_outputs = generate_sweep_report(
+            report_rows, report_metadata, output_subdir,
+            top_n=20, include_full_table=True,
+        )
+    else:
+        report_outputs = {}
+
     # Output report
     print(f"\n{'='*60}")
     print("OUTPUT FILES")
@@ -717,6 +754,8 @@ def main():
               f"({len(broken_bot_names)} broken)")
         print(f"  curated_allowlist.json: {output_subdir / 'curated_allowlist.json'} "
               f"({curated_count} combos)")
+    for fmt, path in report_outputs.items():
+        print(f"  sweep_report.{fmt}: {path}")
     print(f"{'='*60}\n")
 
     return result

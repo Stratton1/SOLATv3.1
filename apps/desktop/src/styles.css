@@ -1926,6 +1926,15 @@ body {
   gap: 10px;
 }
 
+.panel-header-left {
+  min-width: 0;
+}
+
+.panel-header-right {
+  flex-shrink: 0;
+  gap: 6px;
+}
+
 /* Symbol Selector */
 .panel-symbol-selector {
   position: relative;
@@ -2053,6 +2062,111 @@ body {
   background-color: var(--accent-blue);
   color: white;
   border-color: var(--accent-blue);
+}
+
+.panel-market-browser-wrapper {
+  position: relative;
+}
+
+.panel-market-btn {
+  padding: 2px 8px;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.panel-market-btn:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.market-browser {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 360px;
+  max-height: 420px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  z-index: 1200;
+  overflow: hidden;
+}
+
+.market-browser-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.market-tab-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.market-tab-btn.active {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+  background: rgba(26, 115, 232, 0.1);
+}
+
+.market-browser-search {
+  width: calc(100% - 16px);
+  margin: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.market-browser-list {
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.market-browser-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  font-size: 12px;
+}
+
+.market-browser-item:hover {
+  background: var(--bg-secondary);
+}
+
+.market-browser-item.active {
+  background: rgba(26, 115, 232, 0.14);
 }
 
 /* Link Group Selector */

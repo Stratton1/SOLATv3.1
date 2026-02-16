@@ -171,7 +171,17 @@ class ExecutionRouter:
             if not accounts:
                 return {"ok": False, "error": "No accounts found"}
 
-            account = accounts[0]
+            selected_account_id = getattr(getattr(broker_adapter, "login_response", None), "account_id", None)
+            account = (
+                next(
+                    (
+                        acc
+                        for acc in accounts
+                        if (acc.get("accountId", acc.get("account_id")) == selected_account_id)
+                    ),
+                    accounts[0],
+                )
+            )
             self._state.account_id = account.get("accountId", account.get("account_id"))
             
             # Sync catalogue metadata to risk engine
@@ -301,7 +311,16 @@ class ExecutionRouter:
         try:
             accounts = await self._broker_adapter.list_accounts()
             if accounts:
-                balance = float(accounts[0].get("balance", {}).get("balance", 0))
+                selected_account_id = self._state.account_id
+                account = next(
+                    (
+                        acc
+                        for acc in accounts
+                        if acc.get("accountId", acc.get("account_id")) == selected_account_id
+                    ),
+                    accounts[0],
+                )
+                balance = float(account.get("balance", {}).get("balance", 0))
                 old_balance = self._account_balance
 
                 self._account_balance = balance

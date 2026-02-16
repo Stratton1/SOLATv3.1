@@ -52,12 +52,12 @@ export function CommandPalette({ onClose, onNavigate }: CommandPaletteProps) {
               break;
             case "close_all":
               showToast("Activating Kill Switch...", "warning");
-              await engineClient.activateKillSwitch("manual");
+              await engineClient.killSwitch();
               showToast("Kill Switch Activated. Positions closing.", "error");
               break;
             case "sync":
               showToast("Started Quick Sync (30d)...", "info");
-              await engineClient.triggerQuickSync({ days: 30 });
+              await engineClient.quickSync(30);
               showToast("Sync started in background", "success");
               break;
             case "diagnostics":

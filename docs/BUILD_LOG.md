@@ -5,6 +5,251 @@ Chronological record of major implementation prompts.
 ---
 
 
+## Spread-bet-only lock + epic alignment
+
+**Date**: 2026-02-15  
+**Tests**: `cd engine && python3 -m pytest tests/test_desktop_api_contract.py -q` (8 passed); `pnpm --filter solat-desktop build` (pass)
+
+### Summary
+
+Locked IG account selection toward spread-betting by default and added strict account-type enforcement support. Added account switching during login (with safe fallback when IG rejects account switching), account-aware execution state selection, terminal-side catalogue auto-bootstrap, and epic migration to spread-bet style epics (`TODAY/IFD`) so chart instruments align with IG spread-bet markets.
+
+### Files Changed
+
+- `engine/solat_engine/config.py`
+- `engine/solat_engine/broker/ig/client.py`
+- `engine/solat_engine/execution/router.py`
+- `engine/solat_engine/catalog/seed.py`
+- `engine/solat_engine/catalog/store.py`
+- `engine/solat_engine/api/ig_terminal_routes.py`
+- `engine/solat_engine/api/catalog_routes.py`
+- `.env.example`
+- `docs/ops/PROJECT_MEMORY.md`
+
+---
+
+## Adaptive 403 fallback + history-aware market ranking
+
+**Date**: 2026-02-15  
+**Tests**: `cd engine && python3 -m pytest tests/test_desktop_api_contract.py -q` (8 passed); `pnpm --filter solat-desktop build` (pass)
+
+### Summary
+
+Implemented adaptive crypto history retrieval behavior in normalized `/bars` so IG 403-denied windows are handled with bounded retries, smaller backfill spans, and per-symbol cooloff. Added universe-level history capability metadata and crypto-tab sorting by history score to surface better symbols first. Updated chart sparse-data copy to remove stale gap-fill wording and provide actionable timeframe/symbol guidance.
+
+### Files Changed
+
+- `engine/solat_engine/api/ig_terminal_routes.py`
+- `engine/tests/test_desktop_api_contract.py`
+- `apps/desktop/src/lib/engineClient.ts`
+- `apps/desktop/src/components/workspace/MarketBrowser.tsx`
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `docs/ops/PROJECT_MEMORY.md`
+
+---
+
+## Sparse crypto remediation update (1m-derived fallback) + gap-fill rollback
+
+**Date**: 2026-02-15  
+**Tests**: `cd engine && python3 -m pytest tests/test_desktop_api_contract.py -q` (6 passed); `pnpm --filter solat-desktop build` (pass)
+
+### Summary
+
+Enhanced `/bars` fallback to fetch `1m` and derive higher timeframes when native crypto history is sparse, then persist both to cache for later requests. Removed UI synthetic candle gap-fill because it introduced misleading horizontal artifacts; chart now renders only real bars. Runtime logs confirm repeated IG historical `403` responses on crypto windows, consistent with account/instrument historical allowance limits.
+
+### Files Changed
+
+- `engine/solat_engine/api/ig_terminal_routes.py`
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `docs/ops/PROJECT_MEMORY.md`
+
+---
+
+## Crypto sparse-history handling (UI gap-fill + diagnostics)
+
+**Date**: 2026-02-15  
+**Tests**: `pnpm --filter solat-desktop build` (pass)
+
+### Summary
+
+Confirmed that low candle density on selected crypto CFDs is coming from IG historical coverage on this account/instrument set (while FX remains full). Added chart-level display gap-fill for sparse datasets to keep timeline continuity and reduce clustered-candle visuals. Added explicit sparse-data status hint in panel footer.
+
+### Files Changed
+
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `docs/ops/PROJECT_MEMORY.md`
+
+---
+
+## Sparse IG bars backfill + chart coverage telemetry
+
+**Date**: 2026-02-15  
+**Tests**: `cd engine && python3 -m pytest tests/test_desktop_api_contract.py -q` (6 passed); `pnpm --filter solat-desktop build` (pass)
+
+### Summary
+
+Implemented sparse-history remediation in normalized `/bars` by backfilling from IG when cache coverage is below a timeframe-aware threshold, not only when empty. Added progressive date-range fallback passes for broader history hydration, and exposed response telemetry (`requested_limit`, `coverage_pct`, `source`) consumed by desktop status UI. Added bars-based initial x-range handling to improve first render framing.
+
+### Files Changed
+
+- `engine/solat_engine/api/ig_terminal_routes.py`
+- `apps/desktop/src/lib/engineClient.ts`
+- `apps/desktop/src/hooks/useBars.ts`
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `docs/ops/PROJECT_MEMORY.md`
+
+---
+
+## Chart full-day window fix (lookback migration)
+
+**Date**: 2026-02-15  
+**Tests**: `pnpm --filter solat-desktop build` (pass)
+
+### Summary
+
+Fixed chart sessions loading with too few candles by introducing timeframe-based minimum lookback bars and migrating persisted workspace panels that had undersized `lookbackBars`. `ChartPanel` now enforces this minimum when fetching bars, improving default 15m/1h/4h history coverage without manual zoom/pan.
+
+### Files Changed
+
+- `apps/desktop/src/lib/workspace.ts`
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `docs/ops/PROJECT_MEMORY.md`
+
+---
+
+## Chart header overlap fix (zoom/timescale controls)
+
+**Date**: 2026-02-15  
+**Tests**: `pnpm --filter solat-desktop build` (pass)
+
+### Summary
+
+Fixed chart header crowding where the market control overlapped timescale/zoom controls. Removed the quick symbol strip, switched the market trigger to compact `MKT`, and tightened left/right header flex rules so right-side zoom + status controls remain stable and non-overlapping.
+
+### Files Changed
+
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `apps/desktop/src/styles.css`
+- `docs/ops/PROJECT_MEMORY.md`
+
+---
+
+## IG chart data root-cause fix + market tabs
+
+**Date**: 2026-02-15  
+**Tests**: `cd engine && python3 -m pytest tests/test_desktop_api_contract.py -q` (6 passed); `pnpm --filter solat-desktop build` (pass)
+
+### Summary
+
+Resolved chart no-data behavior by fixing IG historical endpoint usage in the engine fetcher (`/prices/{epic}` with query params), adding IG-on-demand bars fallback in normalized `/bars`, and fixing `/universe` response mapping crash. Added IG-style market category tabs in chart header and tightened symbol normalization/workspace migration so symbol switching is deterministic. Updated crypto mapping to `BCHUSD` for an actually tradable IG instrument in this setup.
+
+### Files Changed
+
+- `engine/solat_engine/data/ig_history.py`
+- `engine/solat_engine/api/ig_terminal_routes.py`
+- `engine/solat_engine/catalog/seed.py`
+- `engine/solat_engine/catalog/data/instruments.json`
+- `engine/tests/test_desktop_api_contract.py`
+- `apps/desktop/src/components/workspace/MarketBrowser.tsx` (new)
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `apps/desktop/src/styles.css`
+- `apps/desktop/src/lib/workspace.ts`
+- `apps/desktop/src/lib/engineClient.ts`
+- `apps/desktop/src/hooks/useCatalogue.ts`
+- `docs/ops/PROJECT_MEMORY.md`
+
+---
+
+## Chart symbol-switch hotfix + demo verification
+
+**Date**: 2026-02-15  
+**Tests**: `pnpm --filter solat-desktop build` (pass)
+
+### Summary
+
+Fixed chart symbol switching reliability by removing the dropdown backdrop click blocker, normalizing symbol updates to uppercase, and adding quick crypto symbol buttons as a fallback path. Also fixed a TypeScript regression in `useBars` debug calls and hardened engine symbol map normalization for route lookup consistency.
+
+### Files Changed
+
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `apps/desktop/src/hooks/useBars.ts`
+- `engine/solat_engine/api/ig_terminal_routes.py`
+- `docs/ops/PROJECT_MEMORY.md`
+
+---
+
+## Hardening pass: contract + anti-flicker + route centralization
+
+**Date**: 2026-02-15  
+**Tests**: `pnpm --filter solat-desktop build` (pass); `cd engine && python3 -m pytest tests/test_desktop_api_contract.py tests/test_sweep_report.py -q` (73 passed)
+
+### Summary
+
+Added a deterministic desktop API contract doc and contract tests, centralized route strings behind a shared `ROUTES` map, removed dead legacy market hooks, and stabilized engine-online UX by moving screen consumers to shared connection context plus health-state hysteresis.
+
+### Files Changed
+
+- `docs/ops/DESKTOP_API_CONTRACT.md`
+- `engine/tests/test_desktop_api_contract.py`
+- `apps/desktop/src/lib/routes.ts`
+- `apps/desktop/src/lib/engineClient.ts`
+- `apps/desktop/src/hooks/useEngineHealth.ts`
+- `apps/desktop/src/screens/IntroScreen.tsx`
+- `apps/desktop/src/screens/PlaygroundScreen.tsx`
+- `apps/desktop/src/screens/AllowlistScreen.tsx`
+- `apps/desktop/src/screens/BotsScreen.tsx`
+- `apps/desktop/src/screens/DashboardScreen.tsx`
+- `apps/desktop/src/hooks/useBrokerStatus.ts`
+- `apps/desktop/src/components/status/BrokerConnectivityCard.tsx`
+- `apps/desktop/src/hooks/useMarketStatus.ts` (deleted)
+- `apps/desktop/src/hooks/useMarketSubscription.ts` (deleted)
+
+---
+
+## Desktop normalized-route follow-up sweep
+
+**Date**: 2026-02-15  
+**Tests**: `pnpm --filter solat-desktop build` (pass)
+
+### Summary
+
+Completed a desktop-only follow-up migration so remaining route callers use the normalized IG terminal surface. Removed legacy UI dependence on market subscribe/status and IG status/login routes by mapping all affected flows to `/universe`, `/quotes`, and `/account`.
+
+### Files Changed
+
+- `apps/desktop/src/lib/engineClient.ts`
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `apps/desktop/src/components/DemoChecklist.tsx`
+- `apps/desktop/src/hooks/useBrokerStatus.ts`
+- `apps/desktop/src/components/status/BrokerConnectivityCard.tsx`
+
+---
+
+## IG normalized terminal integration pass
+
+**Date**: 2026-02-15  
+**Tests**: `pnpm --filter solat-desktop build` (pass); `cd engine && python3 -m pytest tests/test_sweep_report.py -q` (67 passed)
+
+### Summary
+
+Implemented a shared app-level engine connection store to prevent route-driven WS churn, added canonical IG-style routes for account/quotes/bars/orders/positions, normalized WS event emission, added chart left-pan history prepend behavior, and wired parallel sweep output to canonical report generation.
+
+### Files Changed
+
+- `apps/desktop/src/App.tsx`
+- `apps/desktop/src/context/EngineConnectionContext.tsx`
+- `apps/desktop/src/hooks/useWsEvents.ts`
+- `apps/desktop/src/hooks/useBars.ts`
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `apps/desktop/src/lib/engineClient.ts`
+- `engine/solat_engine/api/ig_terminal_routes.py`
+- `engine/solat_engine/broker/ig/client.py`
+- `engine/solat_engine/main.py`
+- `engine/solat_engine/backtest/parallel_sweep.py`
+- `docs/ig_integration.md`
+
+---
+
 ## UI shell/screens refactor batch
 
 **Date**: 2026-02-15

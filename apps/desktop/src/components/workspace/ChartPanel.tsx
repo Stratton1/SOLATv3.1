@@ -17,17 +17,23 @@ import { DrawingToolbar } from "../DrawingToolbar";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "../ContextMenu";
 import { StrategyPopover } from "./StrategyPopover";
 import { IndicatorPopover } from "./IndicatorPopover";
+import { MarketBrowser } from "./MarketBrowser";
 import { useBars } from "../../hooks/useBars";
 import { useOverlays } from "../../hooks/useOverlays";
 import { useSignals } from "../../hooks/useSignals";
 import { useCatalogue } from "../../hooks/useCatalogue";
-import { useMarketStatus } from "../../hooks/useMarketStatus";
-import { useMarketSubscription } from "../../hooks/useMarketSubscription";
 import { useWorkspace } from "../../hooks/useWorkspace";
 import { useWsEvents, QuoteUpdateEvent, BarUpdateEvent } from "../../hooks/useWsEvents";
 import { useExecutionEvents } from "../../hooks/useExecutionEvents";
 import { useDrawings } from "../../hooks/useDrawings";
-import { Panel, PanelBot, PanelIndicator, TIMEFRAMES, LinkGroup } from "../../lib/workspace";
+import {
+  Panel,
+  PanelBot,
+  PanelIndicator,
+  TIMEFRAMES,
+  LinkGroup,
+  getMinimumLookbackBars,
+} from "../../lib/workspace";
 import { Drawing, DEFAULT_DRAWING_COLOR } from "../../lib/drawings";
 import { engineClient } from "../../lib/engineClient";
 import { useToast } from "../../context/ToastContext";
@@ -68,8 +74,6 @@ export function ChartPanel({
 }: ChartPanelProps) {
   const { updatePanel, setLinkedTimeframe, setLinkedSymbol } = useWorkspace();
   const { items: catalogueItems } = useCatalogue();
-  const { status: marketStatus } = useMarketStatus();
-  const { subscribe } = useMarketSubscription();
   const { showToast } = useToast();
 
   // Local state
@@ -83,21 +87,32 @@ export function ChartPanel({
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [showDrawingToolbar, setShowDrawingToolbar] = useState(false);
   const [showRangeSlider, setShowRangeSlider] = useState(false);
+  const [showMarketBrowser, setShowMarketBrowser] = useState(false);
   const [activeZoom, setActiveZoom] = useState<string | null>(null);
   const [xRange, setXRange] = useState<[string, string] | null>(null);
+  const [hasManualRange, setHasManualRange] = useState(false);
+  const [historyLimitReached, setHistoryLimitReached] = useState(false);
   const overflowRef = useRef<HTMLDivElement>(null);
+  const symbolDropdownRef = useRef<HTMLDivElement>(null);
+  const marketBrowserRef = useRef<HTMLDivElement>(null);
 
   // Data hooks
   const {
     bars,
     isLoading: barsLoading,
+    isLoadingHistory,
     start: barsStart,
     end: barsEnd,
+    requestedLimit,
+    coveragePct,
+    source,
+    hasMoreHistory,
     appendBar,
+    loadOlderBars,
   } = useBars({
     symbol: panel.symbol,
     timeframe: panel.timeframe,
-    limit: panel.lookbackBars,
+    limit: Math.max(panel.lookbackBars, getMinimumLookbackBars(panel.timeframe)),
   });
 
   const enabledIndicators = useMemo(
@@ -175,13 +190,35 @@ export function ChartPanel({
     onBar: handleBar,
   });
 
-  // Subscribe to symbol on mount
+  // Quote polling fallback (normalized route-only flow).
   useEffect(() => {
-    const item = catalogueItems.find((i) => i.symbol === panel.symbol);
-    if (item && marketStatus && !marketStatus.subscriptions.includes(panel.symbol)) {
-      subscribe([panel.symbol], "stream").catch(console.error);
-    }
-  }, [panel.symbol, catalogueItems, marketStatus, subscribe]);
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await engineClient.getQuotes([panel.symbol]);
+        if (cancelled) return;
+        const next = res.quotes[panel.symbol];
+        if (next) {
+          setQuote({
+            type: "quote_update",
+            symbol: next.symbol,
+            bid: next.bid,
+            ask: next.ask,
+            mid: next.mid,
+            ts: next.ts,
+          });
+        }
+      } catch {
+        // Keep existing quote if polling fails.
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [panel.symbol]);
 
   // Handle deep link from blotter/palette (sessionStorage) — run once on mount
   useEffect(() => {
@@ -218,11 +255,44 @@ export function ChartPanel({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showOverflowMenu]);
 
+  // Close symbol dropdown on outside click (without global backdrop intercepting clicks)
+  useEffect(() => {
+    if (!showSymbolDropdown) return;
+    const handleClick = (e: MouseEvent) => {
+      if (symbolDropdownRef.current && !symbolDropdownRef.current.contains(e.target as Node)) {
+        setShowSymbolDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showSymbolDropdown]);
+
+  // Close market browser on outside click
+  useEffect(() => {
+    if (!showMarketBrowser) return;
+    const handleClick = (e: MouseEvent) => {
+      if (marketBrowserRef.current && !marketBrowserRef.current.contains(e.target as Node)) {
+        setShowMarketBrowser(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showMarketBrowser]);
+
   // Clear zoom when symbol/timeframe changes
   useEffect(() => {
     setActiveZoom(null);
     setXRange(null);
+    setHasManualRange(false);
+    setHistoryLimitReached(false);
   }, [panel.symbol, panel.timeframe]);
+
+  const effectiveXRange = useMemo<[string, string] | null>(() => {
+    if (xRange) return xRange;
+    if (hasManualRange) return null;
+    if (bars.length < 2) return null;
+    return [bars[0].ts, bars[bars.length - 1].ts];
+  }, [xRange, hasManualRange, bars]);
 
   // Filter symbols for search
   const filteredSymbols = useMemo(() => {
@@ -237,9 +307,10 @@ export function ChartPanel({
   // Handlers
   const handleSymbolChange = useCallback(
     (symbol: string) => {
-      updatePanel(panel.id, { symbol });
+      const normalizedSymbol = symbol.toUpperCase();
+      updatePanel(panel.id, { symbol: normalizedSymbol });
       if (panel.linkGroup !== "none") {
-        setLinkedSymbol(panel.linkGroup, symbol);
+        setLinkedSymbol(panel.linkGroup, normalizedSymbol);
       }
       setShowSymbolDropdown(false);
       setSymbolSearch("");
@@ -308,13 +379,29 @@ export function ChartPanel({
 
   // 2A: Handle relayout — manual pan clears active zoom preset
   const handleRelayout = useCallback(
-    (event: Plotly.PlotRelayoutEvent) => {
+    async (event: Plotly.PlotRelayoutEvent) => {
       // User panned/zoomed manually — clear zoom preset
       if (event["xaxis.range[0]"] || event["xaxis.range[1]"] || event["xaxis.autorange"]) {
         setActiveZoom(null);
       }
+      if (event["xaxis.range[0]"] || event["xaxis.range[1]"]) {
+        setHasManualRange(true);
+      }
+      if (!bars.length || isLoadingHistory || !hasMoreHistory) return;
+      const rangeStart = event["xaxis.range[0]"];
+      if (!rangeStart || typeof rangeStart !== "string") return;
+      const leftMs = new Date(rangeStart).getTime();
+      const firstMs = new Date(bars[0].ts).getTime();
+      const lastMs = new Date(bars[bars.length - 1].ts).getTime();
+      const span = Math.max(lastMs - firstMs, 1);
+      const nearLeftEdge = leftMs <= firstMs + span * 0.1;
+      if (!nearLeftEdge) return;
+      const loaded = await loadOlderBars(1000);
+      if (loaded === 0 && !hasMoreHistory) {
+        setHistoryLimitReached(true);
+      }
     },
-    []
+    [bars, hasMoreHistory, isLoadingHistory, loadOlderBars]
   );
 
   // Quick Trade Handler
@@ -375,7 +462,7 @@ export function ChartPanel({
   );
 
   // Is live data flowing?
-  const isLive = quote !== null;
+  const isLive = quote !== null && Date.now() - new Date(quote.ts).getTime() < 15000;
 
   return (
     <div
@@ -388,10 +475,12 @@ export function ChartPanel({
       <div className="panel-header">
         <div className="panel-header-left">
           {/* Symbol Selector */}
-          <div className="panel-symbol-selector">
+          <div className="panel-symbol-selector" ref={symbolDropdownRef}>
             <button
               className="panel-symbol-btn"
-              onClick={() => setShowSymbolDropdown(!showSymbolDropdown)}
+              onClick={() => {
+                setShowSymbolDropdown(!showSymbolDropdown);
+              }}
             >
               <span className="panel-symbol">{panel.symbol}</span>
               {quote && (
@@ -438,9 +527,30 @@ export function ChartPanel({
               </button>
             ))}
           </div>
+
         </div>
 
         <div className="panel-header-right">
+          <div className="panel-market-browser-wrapper" ref={marketBrowserRef}>
+            <button
+              className="panel-market-btn"
+              onClick={() => setShowMarketBrowser((v) => !v)}
+              title="Browse IG markets"
+            >
+              MKT
+            </button>
+            {showMarketBrowser && (
+              <MarketBrowser
+                items={catalogueItems}
+                currentSymbol={panel.symbol}
+                onSelectSymbol={(symbol) => {
+                  handleSymbolChange(symbol);
+                  setShowMarketBrowser(false);
+                }}
+              />
+            )}
+          </div>
+
           {/* 2E: Zoom Buttons */}
           <div className="panel-zoom-btns">
             {ZOOM_PRESETS.map((preset) => (
@@ -665,7 +775,7 @@ export function ChartPanel({
               height={undefined}
               symbol={panel.symbol}
               timeframe={panel.timeframe}
-              xRange={xRange}
+              xRange={effectiveXRange}
               showRangeSlider={showRangeSlider}
             />
             {/* Quick Trade Overlay */}
@@ -692,9 +802,25 @@ export function ChartPanel({
       {/* Panel Status */}
       <div className="panel-status">
         <span className="panel-status-bars">{bars.length} bars</span>
+        {isLoadingHistory && <span className="panel-status-range">loading more history...</span>}
+        {historyLimitReached && (
+          <span className="panel-status-range">history limit reached</span>
+        )}
         {barsStart && barsEnd && (
           <span className="panel-status-range">
             {new Date(barsStart).toLocaleDateString()} - {new Date(barsEnd).toLocaleDateString()}
+          </span>
+        )}
+        {requestedLimit != null && requestedLimit > 0 && (
+          <span className="panel-status-range">
+            cov {bars.length}/{requestedLimit}
+            {coveragePct != null ? ` (${coveragePct.toFixed(1)}%)` : ""}
+            {source ? ` ${source}` : ""}
+          </span>
+        )}
+        {(coveragePct ?? 100) < 70 && (
+          <span className="panel-status-range">
+            IG history limited for {panel.symbol} {panel.timeframe} (try 1h/4h or another crypto in MKT)
           </span>
         )}
         {quote && (
@@ -707,14 +833,6 @@ export function ChartPanel({
           {bars.length > 0 && new Date(bars[bars.length - 1].ts).toLocaleTimeString()}
         </span>
       </div>
-
-      {/* Close dropdown on outside click */}
-      {showSymbolDropdown && (
-        <div
-          className="dropdown-backdrop"
-          onClick={() => setShowSymbolDropdown(false)}
-        />
-      )}
 
       {/* Context Menu */}
       {menu && (

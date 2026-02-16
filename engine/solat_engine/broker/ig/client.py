@@ -24,6 +24,7 @@ from solat_engine.config import Settings
 
 # IG API version headers
 IG_VERSION_SESSION = "2"
+IG_VERSION_SESSION_SWITCH = "1"
 IG_VERSION_ACCOUNTS = "1"
 IG_VERSION_MARKETS_SEARCH = "1"
 IG_VERSION_MARKET_DETAILS = "3"
@@ -413,6 +414,40 @@ class AsyncIGClient:
             accounts=accounts,
         )
 
+        # Enforce account-type selection (spread-bet by default) before exposing session.
+        required_type = (self._settings.ig_required_account_type or "").upper()
+        strict_type = bool(self._settings.ig_strict_account_type)
+        requested_id = self._settings.ig_account_id
+        selected_account = self._select_account(accounts, requested_id, required_type)
+        if selected_account is None:
+            available_types = sorted({str(acc.account_type.value) for acc in accounts})
+            if strict_type:
+                raise IGAuthError(
+                    f"Required IG account type {required_type!r} unavailable. "
+                    f"Available account types: {available_types}"
+                )
+        else:
+            if strict_type and selected_account.account_type.value.upper() != required_type:
+                raise IGAuthError(
+                    f"Selected account {selected_account.account_id} has type "
+                    f"{selected_account.account_type.value!r}, required {required_type!r}"
+                )
+            if self._login_response.account_id != selected_account.account_id:
+                try:
+                    await self._switch_account(selected_account.account_id)
+                    self._login_response.account_id = selected_account.account_id
+                except IGAuthError as exc:
+                    if strict_type:
+                        raise
+                    self._logger.warning(
+                        "Unable to switch IG account to %s (%s). Continuing with current account %s.",
+                        selected_account.account_id,
+                        exc,
+                        self._login_response.account_id,
+                    )
+            else:
+                self._login_response.account_id = selected_account.account_id
+
         self._logger.info(
             "IG login successful: %d accounts, current=%s",
             len(accounts),
@@ -425,6 +460,57 @@ class AsyncIGClient:
         """Ensure we have a valid session, logging in if necessary."""
         if not self.is_authenticated:
             await self.login()
+
+    def _select_account(
+        self,
+        accounts: list[IGAccount],
+        requested_account_id: str | None,
+        required_type: str,
+    ) -> IGAccount | None:
+        requested_account: IGAccount | None = None
+        if requested_account_id:
+            requested_account = next(
+                (a for a in accounts if a.account_id == requested_account_id),
+                None,
+            )
+            if (
+                requested_account is not None
+                and requested_account.account_type.value.upper() == required_type
+            ):
+                return requested_account
+
+        candidates = [a for a in accounts if a.account_type.value.upper() == required_type]
+        if candidates:
+            preferred = next((a for a in candidates if a.preferred), None)
+            return preferred or candidates[0]
+
+        if requested_account is not None:
+            self._logger.warning(
+                "Requested account %s type=%s does not match required type=%s",
+                requested_account.account_id,
+                requested_account.account_type.value,
+                required_type,
+            )
+            return requested_account
+
+        if requested_account_id:
+            self._logger.warning("Requested IG_ACCOUNT_ID %s not found in account list", requested_account_id)
+            return None
+
+        return None
+
+    async def _switch_account(self, account_id: str) -> None:
+        response = await self._request(
+            "PUT",
+            "/session",
+            version=IG_VERSION_SESSION_SWITCH,
+            json_body={"accountId": account_id, "defaultAccount": True},
+            require_auth=True,
+            retry_on_401=False,
+        )
+        if response.status_code != 200:
+            raise IGAuthError(f"Failed to switch IG account to {account_id} (status {response.status_code})")
+        self._logger.info("IG account switched to %s", account_id)
 
     async def get_accounts(self) -> list[IGAccount]:
         """
@@ -851,6 +937,87 @@ class AsyncIGClient:
 
         return cast(dict[str, Any], response.json())
 
+    async def place_working_order(
+        self,
+        *,
+        epic: str,
+        direction: str,
+        size: float,
+        order_type: str,
+        level: float,
+        stop_level: float | None = None,
+        limit_level: float | None = None,
+        good_till_date: str | None = None,
+        currency_code: str = "USD",
+    ) -> dict[str, Any]:
+        """
+        Place a working order (limit/stop).
+        """
+        await self.ensure_session()
+        body: dict[str, Any] = {
+            "epic": epic,
+            "direction": direction,
+            "size": str(size),
+            "orderType": order_type,
+            "level": str(level),
+            "currencyCode": currency_code,
+            "timeInForce": "GOOD_TILL_CANCELLED" if good_till_date is None else "GOOD_TILL_DATE",
+        }
+        if good_till_date is not None:
+            body["goodTillDate"] = good_till_date
+        if stop_level is not None:
+            body["stopLevel"] = str(stop_level)
+        if limit_level is not None:
+            body["limitLevel"] = str(limit_level)
+
+        response = await self._request(
+            "POST",
+            "/workingorders/otc",
+            version=IG_VERSION_WORKING_ORDERS,
+            json_body=body,
+        )
+        if response.status_code not in (200, 201):
+            error_msg = f"Working order placement failed: status {response.status_code}"
+            try:
+                error_data = response.json()
+                error_msg = error_data.get("errorCode", error_msg)
+            except Exception:
+                pass
+            raise IGAPIError(error_msg, status_code=response.status_code)
+        return cast(dict[str, Any], response.json())
+
+    async def amend_position(
+        self,
+        *,
+        deal_id: str,
+        stop_level: float | None = None,
+        limit_level: float | None = None,
+    ) -> dict[str, Any]:
+        """
+        Amend stop/limit levels on an existing position.
+        """
+        await self.ensure_session()
+        body: dict[str, Any] = {}
+        if stop_level is not None:
+            body["stopLevel"] = str(stop_level)
+        if limit_level is not None:
+            body["limitLevel"] = str(limit_level)
+        response = await self._request(
+            "PUT",
+            f"/positions/otc/{deal_id}",
+            version=IG_VERSION_POSITIONS,
+            json_body=body,
+        )
+        if response.status_code not in (200, 201):
+            error_msg = f"Amend position failed: status {response.status_code}"
+            try:
+                error_data = response.json()
+                error_msg = error_data.get("errorCode", error_msg)
+            except Exception:
+                pass
+            raise IGAPIError(error_msg, status_code=response.status_code)
+        return cast(dict[str, Any], response.json())
+
     # =========================================================================
     # Account Verification Methods (for LIVE trading gates)
     # =========================================================================
@@ -888,7 +1055,7 @@ class AsyncIGClient:
         accounts = data.get("accounts", [])
 
         # Find the target account
-        target_id = account_id or self._login_response.account_id if self._login_response else None
+        target_id = account_id or (self._login_response.account_id if self._login_response else None)
 
         for acc in accounts:
             if acc.get("accountId") == target_id:

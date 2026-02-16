@@ -38,17 +38,17 @@ export const BrokerConnectivityCard = memo(function BrokerConnectivityCard({
     setTesting(true);
     setTestResult(null);
     try {
-      const result = await engineClient.testIGLogin();
+      const result = await engineClient.getAccount();
       setTestResult({
-        ok: result.ok,
-        message: result.message,
-        account_id: result.current_account_id,
+        ok: Boolean(result.account_id),
+        message: result.account_id ? "Account endpoint reachable" : "No account id returned",
+        account_id: result.account_id,
       });
-      if (result.ok) {
-        showToast("IG Auth successful", "success");
+      if (result.account_id) {
+        showToast("Account connectivity successful", "success");
         onLoginSuccess?.();
       } else {
-        showToast("IG Auth failed", "error");
+        showToast("Account connectivity failed", "error");
       }
     } catch {
       setTestResult({ ok: false, message: "Request failed \u2014 is the engine running?" });

@@ -18,6 +18,8 @@ const INITIAL_RETRY_DELAY_MS = 1000;
 const MAX_RETRY_DELAY_MS = 30000;
 const BACKOFF_MULTIPLIER = 1.5;
 const POLL_INTERVAL_MS = 5000;
+const OFFLINE_FAILURE_THRESHOLD = 2;
+const OFFLINE_GRACE_MS = 2000;
 
 export interface SystemMetrics {
   cpu_pct: number;
@@ -75,6 +77,8 @@ export function useEngineHealth(): UseEngineHealthResult {
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Track whether we've ever successfully fetched, to avoid loading jitter on polls
   const hasDataRef = useRef(false);
+  const consecutiveFailuresRef = useRef(0);
+  const firstFailureAtRef = useRef<number | null>(null);
 
   const clearTimers = useCallback(() => {
     if (retryTimeoutRef.current) {
@@ -159,6 +163,8 @@ export function useEngineHealth(): UseEngineHealthResult {
       setRetryCount(0);
       setNextRetryIn(null);
       hasDataRef.current = true;
+      consecutiveFailuresRef.current = 0;
+      firstFailureAtRef.current = null;
 
       // Start polling if not already
       if (!pollIntervalRef.current) {
@@ -178,7 +184,14 @@ export function useEngineHealth(): UseEngineHealthResult {
         setHealth(null);
         setConfig(null);
       }
-      setConnectionState("disconnected");
+      consecutiveFailuresRef.current += 1;
+      if (firstFailureAtRef.current === null) {
+        firstFailureAtRef.current = Date.now();
+      }
+      const withinGraceWindow = Date.now() - firstFailureAtRef.current < OFFLINE_GRACE_MS;
+      const belowFailureThreshold = consecutiveFailuresRef.current < OFFLINE_FAILURE_THRESHOLD;
+      const shouldStayConnected = hasDataRef.current && (withinGraceWindow || belowFailureThreshold);
+      setConnectionState(shouldStayConnected ? "connected" : "disconnected");
 
       // Clear polling
       if (pollIntervalRef.current) {

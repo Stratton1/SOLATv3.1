@@ -12,7 +12,7 @@ import { useState, useMemo, useCallback } from "react";
 import { SummaryBar } from "../components/ui/SummaryBar";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ELITE_8_BOTS, CATEGORIES, BotMeta } from "../lib/elite8Meta";
-import { useEngineHealth } from "../hooks/useEngineHealth";
+import { useEngineConnection } from "../context/EngineConnectionContext";
 
 type BotView = "all" | "starred" | "trend" | "momentum" | "reversal" | "breakout";
 
@@ -37,7 +37,7 @@ function saveStarred(set: Set<string>) {
 }
 
 export function BotsScreen() {
-  const { health } = useEngineHealth();
+  const { health } = useEngineConnection();
   const [view, setView] = useState<BotView>("all");
   const [starred, setStarred] = useState<Set<string>>(getStarred);
   const [selectedBot, setSelectedBot] = useState<BotMeta | null>(null);

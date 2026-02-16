@@ -97,6 +97,16 @@ class Settings(BaseSettings):
         alias="IG_ACC_TYPE",
         description="IG account type (DEMO or LIVE)",
     )
+    ig_required_account_type: str = Field(
+        default="SPREADBET",
+        alias="IG_REQUIRED_ACCOUNT_TYPE",
+        description="Required IG account type for this terminal (e.g. SPREADBET)",
+    )
+    ig_strict_account_type: bool = Field(
+        default=False,
+        alias="IG_STRICT_ACCOUNT_TYPE",
+        description="If true, fail login when required IG account type is unavailable",
+    )
     ig_base_url_demo: str = Field(
         default="https://demo-api.ig.com/gateway/deal",
         alias="IG_BASE_URL_DEMO",

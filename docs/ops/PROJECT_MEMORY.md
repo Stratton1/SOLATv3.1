@@ -19,6 +19,316 @@ Updated for every meaningful code change (enforced via pre-commit hook and CI gu
 ---
 
 
+## 2026-02-15T06:45:00Z — Spread-bet-only account lock + epic migration to IG TODAY/IFD style
+
+**What changed**
+- Enforced IG account selection by required account type with strict mode defaults:
+ - Enforced IG account selection by required account type with strict-mode support:
+  - added `IG_REQUIRED_ACCOUNT_TYPE` (default `SPREADBET`)
+  - added `IG_STRICT_ACCOUNT_TYPE` (default `false`)
+  - login now selects/switches to matching account via `PUT /session`; if switching is not supported by IG on this account context, it logs a warning and continues unless strict mode is enabled
+- Updated execution broker connect/balance refresh to use the selected IG account (not simply first account in list)
+- Added catalogue epic synchronization method to migrate existing symbols from stale CFD/MINI epics to seed-defined spread-bet epics when spread-bet mode is active
+- Updated terminal catalogue dependency to auto-bootstrap if empty and auto-apply spread-bet epic sync for IG terminal routes
+- Updated catalogue bootstrap/enrichment to prefer spread-bet-style epics (`.TODAY.` / `.IFD.`) and use live-style seed epics in spread-bet mode (even in demo environment)
+- Added explicit spread-bet crypto seed epics (`BCHUSD/ETHUSD/LTCUSD/XRPUSD`) to keep crypto tabs populated with IG spread-bet symbols
+- Added new `.env.example` keys for account-type enforcement
+
+**Files**
+- `engine/solat_engine/config.py`
+- `engine/solat_engine/broker/ig/client.py`
+- `engine/solat_engine/execution/router.py`
+- `engine/solat_engine/catalog/seed.py`
+- `engine/solat_engine/catalog/store.py`
+- `engine/solat_engine/api/ig_terminal_routes.py`
+- `engine/solat_engine/api/catalog_routes.py`
+- `.env.example`
+
+**Verification**
+- `cd engine && python3 -m pytest tests/test_desktop_api_contract.py -q` passed (8 tests)
+- `pnpm --filter solat-desktop build` passed
+- Lint diagnostics clean for modified files
+
+---
+
+
+## 2026-02-15T06:27:00Z — Adaptive 403 backfill + universe history scoring + sparse UX cleanup
+
+**What changed**
+- Implemented adaptive `/bars` fallback logic for IG 403-limited windows:
+  - bounded retry attempts,
+  - 403-aware window step-down (smaller spans instead of widening),
+  - per symbol/timeframe 403 cooloff cache to prevent retry storms
+- Kept and tightened 1m-derived fallback path for sparse higher timeframes (aggregate 1m into requested TF and persist alongside native bars)
+- Added `/universe` history capability fields (timeframe-aware): `history_row_count`, `history_score`, `history_supported`
+- Updated market browser crypto tab ranking to prioritize higher history score and show quick `Hxx` score hints
+- Replaced stale sparse status text in chart panel with explicit guidance:
+  - `IG history limited for <symbol> <tf> (try 1h/4h or another crypto in MKT)`
+- Added contract regression tests:
+  - `/bars` telemetry fields
+  - bounded 403 fallback behavior
+  - `/universe` includes history capability fields
+
+**Files**
+- `engine/solat_engine/api/ig_terminal_routes.py`
+- `engine/tests/test_desktop_api_contract.py`
+- `apps/desktop/src/lib/engineClient.ts`
+- `apps/desktop/src/components/workspace/MarketBrowser.tsx`
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+
+**Verification**
+- `cd engine && python3 -m pytest tests/test_desktop_api_contract.py -q` passed (8 tests)
+- `pnpm --filter solat-desktop build` passed
+- Live probe after changes:
+  - `BCHUSD 5m`: 355 bars (44.38%) `cache+ig_fallback`
+  - `BCHUSD 15m`: 171 bars (21.38%) `cache+ig_fallback`
+  - `ETHUSD 15m`: 80 bars (10%) `cache`
+- Lint diagnostics clean for modified files
+
+---
+
+## 2026-02-15T06:28:00Z — Sparse crypto history hardening (1m-derived fallback) + removed synthetic chart candles
+
+**What changed**
+- Reworked IG sparse-history remediation in `/bars` route to also fetch `1m` bars and derive requested higher timeframe (`5m/15m/1h/4h`) via deterministic aggregation when native higher-TF history is thin
+- Persisted both fetched `1m` and derived timeframe bars to parquet during fallback to improve subsequent chart requests
+- Removed UI synthetic gap-fill candles from `ChartPanel` (the flat horizontal artifacts), restoring chart display to real bars only
+
+**Observed runtime evidence**
+- Engine boot logs show repeated IG historical `403` responses during aggressive crypto backfill windows, which explains incomplete history despite fallback attempts
+- FX symbols continue to return full coverage while several crypto symbols remain sparse under current IG constraints
+
+**Files**
+- `engine/solat_engine/api/ig_terminal_routes.py`
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+
+**Verification**
+- `cd engine && python3 -m pytest tests/test_desktop_api_contract.py -q` passed (6 tests)
+- `pnpm --filter solat-desktop build` passed
+- Lint clean for touched files
+
+---
+
+## 2026-02-15T06:22:00Z — Crypto sparse-history explanation hardening + UI gap-fill display
+
+**What changed**
+- Confirmed via live probes that `/bars` telemetry is active and indicates low IG coverage on crypto CFDs (e.g. `BCHUSD/ETHUSD/LTCUSD` at ~10–20%) while FX symbols return full coverage
+- Added chart-rendering-only gap-fill for sparse IG series: synthetic flat candles are inserted between missing intervals so timeline appears continuous without mutating engine truth
+- Added status hint for sparse data mode (`ig sparse data (display gap-fill on)`) so users can distinguish broker sparsity from app failure
+
+**Files**
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+
+**Verification**
+- `pnpm --filter solat-desktop build` passed
+- Lint clean on modified file
+- Live endpoint probes:
+  - `EURUSD/USDJPY 15m`: `800/800` (`100%`)
+  - `BCHUSD/LTCUSD/ETHUSD 15m`: low coverage with `cache+ig_fallback`
+
+---
+
+## 2026-02-15T06:15:00Z — Sparse IG bars backfill remediation + chart coverage telemetry
+
+**What changed**
+- Updated normalized engine `/bars` route to treat sparse cache as backfill-worthy (not just empty cache), using timeframe-aware minimum expected bars
+- Added progressive IG date-range fallback loop (up to 3 widening passes) to hydrate cache when initial history is too thin for requested chart windows
+- Added bars response telemetry fields (`requested_limit`, `coverage_pct`, `source`) so desktop can observe whether data came from cache or IG fallback
+- Wired desktop bars types + hook state to consume coverage/source metadata
+- Added chart panel status coverage display (`cov loaded/requested`, percent, source) and bars-based initial x-range to reduce apparent compression from non-candle traces
+
+**Files**
+- `engine/solat_engine/api/ig_terminal_routes.py`
+- `apps/desktop/src/lib/engineClient.ts`
+- `apps/desktop/src/hooks/useBars.ts`
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+
+**Verification**
+- `cd engine && python3 -m pytest tests/test_desktop_api_contract.py -q` passed (6 tests)
+- `pnpm --filter solat-desktop build` passed
+- `GET /bars` probe on currently running engine still showed old shape (`requested_limit` absent), indicating runtime process restart required to pick up new route code
+
+---
+
+## 2026-02-15T06:03:00Z — Chart bars window fix (full-day coverage on timeframe switch)
+
+**What changed**
+- Fixed truncated chart history caused by persisted low `lookbackBars` values in workspace state
+- Added timeframe-aware minimum lookback floors (`1m`/`5m`/`15m`/`1h`/`4h`/`1d`) in workspace model
+- Added workspace migration to auto-upgrade existing panels to a safe minimum lookback window
+- Updated `ChartPanel` to enforce minimum bars at request time, so `/bars` receives enough history for full-session/day context
+
+**Files**
+- `apps/desktop/src/lib/workspace.ts`
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+
+**Verification**
+- `pnpm --filter solat-desktop build` passed
+- No lints in touched files
+
+---
+
+## 2026-02-15T05:57:00Z — Chart header overlap fix (zoom/timescale controls)
+
+**What changed**
+- Removed quick crypto symbol strip from chart header to reduce control density (market switching remains via IG-style `MKT` browser tabs)
+- Added dedicated compact `MKT` trigger styling to reduce width in right-side control cluster
+- Tuned panel header flex behavior (`panel-header-left` min-width + `panel-header-right` non-shrinking) so zoom presets and badges no longer overlap
+
+**Files**
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `apps/desktop/src/styles.css`
+
+**Verification**
+- `pnpm --filter solat-desktop build` passed
+- No lints in touched files (`ChartPanel.tsx`, `styles.css`)
+
+---
+
+## 2026-02-15T05:46:00Z — IG data-path root-cause fix + IG-style market tabs
+
+**What changed**
+- Fixed root cause for chart no-data from IG history fetcher: corrected IG `/prices` REST path format to use query params (`/prices/{epic}?resolution=...&max=...`), replacing invalid path-style requests returning 404
+- Fixed `/universe` runtime crash by removing invalid catalogue field access and mapping response fields from actual model attributes
+- Added IG-first bars fallback in normalized `/bars` route: when local cache is empty, fetch recent bars from IG, persist to parquet, then return normalized bars payload
+- Added fallback-throttle on bars backfill failures (60s block per symbol/timeframe) to avoid rapid repeated IG calls on temporary errors
+- Added IG-style market browser to chart header (asset tabs: FX / Indices / Commodities / Crypto / Shares) with click-to-load symbol behavior
+- Added symbol canonicalization + workspace migration: uppercase normalization and legacy `BTCUSD` workspace value remap to `BCHUSD`
+- Corrected crypto seed/catalogue mapping from non-working `BTCUSD -> CS.D.BCHXBT.CFD.IP` to tradable `BCHUSD -> CS.D.BCHUSD.CFD.IP`
+
+**Files**
+- `engine/solat_engine/data/ig_history.py`
+- `engine/solat_engine/api/ig_terminal_routes.py`
+- `engine/solat_engine/catalog/seed.py`
+- `engine/solat_engine/catalog/data/instruments.json`
+- `engine/tests/test_desktop_api_contract.py`
+- `apps/desktop/src/components/workspace/MarketBrowser.tsx` (new)
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `apps/desktop/src/styles.css`
+- `apps/desktop/src/lib/workspace.ts`
+- `apps/desktop/src/lib/engineClient.ts`
+- `apps/desktop/src/hooks/useCatalogue.ts`
+
+**Verification**
+- `cd engine && python3 -m pytest tests/test_desktop_api_contract.py -q` passed (`6 passed`)
+- `pnpm --filter solat-desktop build` passed
+- In-process endpoint checks:
+  - `/universe` returns `200`
+  - `/bars?symbol=ETHUSD&tf=15m&limit=20` returns bars
+  - `/bars?symbol=XRPUSD&tf=15m&limit=20` returns bars
+  - `/bars?symbol=BCHUSD&tf=15m&limit=20` returns bars
+
+---
+
+## 2026-02-15T18:05:00Z — Chart symbol-switch hotfix + demo verification
+
+**What changed**
+- Fixed chart symbol selector interaction by removing the backdrop interceptor and using outside-click detection via ref
+- Normalized symbol updates to uppercase in `ChartPanel` so mixed-case symbols do not break bars/quotes requests
+- Added quick crypto symbol buttons in chart header as a fallback switch path
+- Fixed `useBars` debug calls to `globalThis.fetch` to avoid TypeScript shadowing/compile failure
+- Hardened IG terminal symbol lookup map to uppercase keys for normalized route resolution
+
+**Files**
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `apps/desktop/src/hooks/useBars.ts`
+- `engine/solat_engine/api/ig_terminal_routes.py`
+
+**Verification**
+- `pnpm --filter solat-desktop build` passed
+- Engine checks:
+  - `/config` => `mode=DEMO`
+  - `/execution/status` => `mode=DEMO`, `connected=true`
+  - `/account` => account status returned
+  - `/bars?symbol=USDJPY&tf=15m&limit=50` => bars returned
+
+---
+
+## 2026-02-15T17:35:00Z — Hardening pass: desktop contract, route centralization, anti-flicker connectivity
+
+**What changed**
+- Added explicit desktop contract document for normalized API usage (`/health`, `/config`, `/universe`, `/quotes`, `/bars`, `/account`, `/positions`, `/orders/market`)
+- Added engine-side contract regression tests (`engine/tests/test_desktop_api_contract.py`) validating OpenAPI paths and minimum response fields without live IG dependency
+- Centralized desktop route strings through `ROUTES` contract and runtime contract assertion in `engineClient`
+- Removed orphaned legacy hooks (`useMarketStatus`, `useMarketSubscription`) and marked legacy client methods as `@deprecated`
+- Eliminated page-scoped health hook usage in key screens by switching to app-level `EngineConnectionContext`
+- Added connection hysteresis in `useEngineHealth` (failure threshold + grace window) to avoid transient offline flashes during navigation/poll blips
+
+**Files**
+- `docs/ops/DESKTOP_API_CONTRACT.md`
+- `engine/tests/test_desktop_api_contract.py`
+- `apps/desktop/src/lib/routes.ts`
+- `apps/desktop/src/lib/engineClient.ts`
+- `apps/desktop/src/hooks/useEngineHealth.ts`
+- `apps/desktop/src/screens/IntroScreen.tsx`
+- `apps/desktop/src/screens/PlaygroundScreen.tsx`
+- `apps/desktop/src/screens/AllowlistScreen.tsx`
+- `apps/desktop/src/screens/BotsScreen.tsx`
+- `apps/desktop/src/screens/DashboardScreen.tsx`
+- `apps/desktop/src/hooks/useBrokerStatus.ts`
+- `apps/desktop/src/components/status/BrokerConnectivityCard.tsx`
+- `apps/desktop/src/hooks/useMarketStatus.ts` (deleted)
+- `apps/desktop/src/hooks/useMarketSubscription.ts` (deleted)
+
+**Verification**
+- `pnpm --filter solat-desktop build` passed
+- `cd engine && python3 -m pytest tests/test_desktop_api_contract.py tests/test_sweep_report.py -q` passed (`73 passed`)
+
+---
+
+## 2026-02-15T17:05:00Z — Desktop follow-up migration to normalized routes
+
+**What changed**
+- Migrated remaining desktop route callers away from legacy `market/*`, `ig/*`, and catalog instrument routes
+- Updated `engineClient` to use normalized `/universe`, `/quotes`, `/account` mappings
+- Reworked chart panel to use normalized quote polling fallback (no legacy subscribe/status calls)
+- Replaced DEMO checklist run-once action with normalized market order endpoint
+- Reworked broker status/test flows to use normalized account endpoint instead of legacy IG status/login endpoints
+
+**Files**
+- `apps/desktop/src/lib/engineClient.ts`
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `apps/desktop/src/components/DemoChecklist.tsx`
+- `apps/desktop/src/hooks/useBrokerStatus.ts`
+- `apps/desktop/src/components/status/BrokerConnectivityCard.tsx`
+
+**Verification**
+- Tests: `pnpm --filter solat-desktop build`
+- Results: pass
+
+---
+
+## 2026-02-15T16:35:00Z — IG normalized routes + shared WS store + chart history prepend
+
+**What changed**
+- Added app-level engine connection provider so desktop uses one shared health/WS stream
+- Refactored WS event hook to consume shared stream instead of opening per-panel sockets
+- Added canonical IG-style API surface (`/account`, `/positions`, `/orders`, `/universe`, `/quotes`, `/bars`, `/orders/*`, `/positions/*`)
+- Added IG client support for working-order placement and position amendment
+- Normalized WS forwarding to `quote_update`, `bar_update`, `order_event`, `position_event`
+- Added left-pan history expansion in chart hooks/panel with prepend + dedupe behavior
+- Ensured parallel sweep writes canonical sweep report sidecars via shared reporting module
+- Added integration documentation: `docs/ig_integration.md`
+
+**Files**
+- `apps/desktop/src/App.tsx`
+- `apps/desktop/src/context/EngineConnectionContext.tsx`
+- `apps/desktop/src/hooks/useWsEvents.ts`
+- `apps/desktop/src/hooks/useBars.ts`
+- `apps/desktop/src/components/workspace/ChartPanel.tsx`
+- `apps/desktop/src/lib/engineClient.ts`
+- `engine/solat_engine/api/ig_terminal_routes.py`
+- `engine/solat_engine/broker/ig/client.py`
+- `engine/solat_engine/main.py`
+- `engine/solat_engine/backtest/parallel_sweep.py`
+- `docs/ig_integration.md`
+
+**Verification**
+- Tests: `pnpm --filter solat-desktop build`; `cd engine && python3 -m pytest tests/test_sweep_report.py -q`
+- Results: desktop build passed; `tests/test_sweep_report.py` passed (67/67)
+
+---
+
 ## 2026-02-15T02:27:56Z — UI shell/screens refactor batch
 
 **What changed**
@@ -247,3 +557,76 @@ Updated for every meaningful code change (enforced via pre-commit hook and CI gu
 - Results: 749 passed, 0 failed
 
 ---
+
+// File: apps/desktop/src/lib/engineClient.ts
+export class EngineClient {
+  // ... other methods and properties ...
+
+  async placeOrder(order: any): Promise<any> {
+    // existing placeOrder implementation
+  }
+
+  // Back-compat shim for older UI code paths.
+  // Prefer calling `quickSync(days)` directly where possible.
+  async triggerQuickSync(request: { days: number }): Promise<any> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const self: any = this as any;
+    if (typeof self.quickSync === "function") {
+      return await self.quickSync(request.days);
+    }
+    return await this.requestJson("POST", "/data/quick-sync", request);
+  }
+
+  // Back-compat shim for older UI code paths.
+  // If the engine exposes a kill-switch endpoint, this will toggle it on.
+  async activateKillSwitch(reason: string = "manual"): Promise<any> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const self: any = this as any;
+    if (typeof self.setKillSwitch === "function") {
+      return await self.setKillSwitch({ enabled: true, reason });
+    }
+    if (typeof self.killSwitch === "function") {
+      return await self.killSwitch(true, reason);
+    }
+    return await this.requestJson("POST", "/execution/kill-switch", { enabled: true, reason });
+  }
+
+  private async requestJson(method: string, path: string, body?: any): Promise<any> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const opts: RequestInit = { method, headers };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const self: any = this as any;
+    if (typeof self.request === "function") return await self.request(path, opts);
+    if (typeof self.fetchJson === "function") return await self.fetchJson(path, opts);
+
+    const baseUrl: string = (self.baseUrl || "").toString();
+    const res = await fetch(`${baseUrl}${path}`, opts);
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    const txt = await res.text();
+    return txt ? JSON.parse(txt) : {};
+  }
+}
+
+// File: apps/desktop/src/components/OrderTicket.tsx
+import { useState } from "react";
+// ... other imports ...
+
+function OrderTicket() {
+  // ... other state and hooks ...
+
+  // Removed: const [riskPct, setRiskPct] = useState<number | "">("");
+
+  // ... rest of component ...
+}
+
+// File: apps/desktop/src/components/StatusStrip.tsx
+import React, { useState } from "react";
+
+function StatusStrip() {
+  const [isSyncing] = useState(false);
+  const [syncProgress] = useState(0);
+
+  // ... rest of component ...
+}

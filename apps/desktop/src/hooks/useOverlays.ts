@@ -14,8 +14,6 @@ import {
 } from "../lib/engineClient";
 import { useDebounce } from "./useDebounce";
 
-const DEBUG_INGEST_URL = "http://127.0.0.1:7245/ingest/b34e6a51-242b-4280-9e50-b775760b6116";
-
 interface IndicatorConfig {
   type: string;
   params?: Record<string, number>;
@@ -138,17 +136,11 @@ export function useOverlays({
         indicators: debouncedIndicators.map(toEngineIndicator),
         limit: 500,
       };
-      // #region agent log H2 payload shape
-      globalThis.fetch(DEBUG_INGEST_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId: "pre-fix", hypothesisId: "H2", location: "useOverlays.ts:fetch:request", message: "Overlay request prepared", data: { symbol: debouncedSymbol, timeframe: debouncedTimeframe, indicatorCount: debouncedIndicators.length, indicatorSample: debouncedIndicators.slice(0, 3) }, timestamp: Date.now() }) }).catch(() => {});
-      // #endregion
       const data = await engineClient.computeOverlays(request);
       if (controller.signal.aborted) return;
       setOverlays(normalizeOverlayResponse(data));
     } catch (e) {
       if (controller.signal.aborted) return;
-      // #region agent log H2 overlay failure
-      globalThis.fetch(DEBUG_INGEST_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId: "pre-fix", hypothesisId: "H2", location: "useOverlays.ts:fetch:error", message: "Overlay request failed", data: { error: e instanceof Error ? e.message : String(e) }, timestamp: Date.now() }) }).catch(() => {});
-      // #endregion
       // Handle rate limit (429) gracefully
       if (e instanceof Error && e.message.includes("429")) {
         setError("Rate limit exceeded. Please wait.");

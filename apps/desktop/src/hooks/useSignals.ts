@@ -5,8 +5,6 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { Signal, engineClient } from "../lib/engineClient";
 
-const DEBUG_INGEST_URL = "http://127.0.0.1:7245/ingest/b34e6a51-242b-4280-9e50-b775760b6116";
-
 interface UseSignalsOptions {
   symbol: string;
   timeframe: string;
@@ -58,9 +56,6 @@ export function useSignals({
     setIsLoading(true);
     setError(null);
     try {
-      // #region agent log H4 signal request cadence
-      globalThis.fetch(DEBUG_INGEST_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runId: "pre-fix", hypothesisId: "H4", location: "useSignals.ts:fetch:request", message: "Signals request prepared", data: { symbol, timeframe, hasStart: Boolean(startTs), hasEnd: Boolean(endTs) }, timestamp: Date.now() }) }).catch(() => {});
-      // #endregion
       const data = await engineClient.getSignals({
         symbol,
         timeframe,

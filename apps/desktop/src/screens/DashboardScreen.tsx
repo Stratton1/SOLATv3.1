@@ -9,7 +9,7 @@ import Plotly from "plotly.js-finance-dist";
 import { PlotlyChart } from "../components/PlotlyChart";
 import { SummaryBar } from "../components/ui/SummaryBar";
 import { useExecutionStatus } from "../hooks/useExecutionStatus";
-import { useEngineHealth } from "../hooks/useEngineHealth";
+import { useEngineConnection } from "../context/EngineConnectionContext";
 import { useToast } from "../context/ToastContext";
 import {
   engineClient,
@@ -28,7 +28,7 @@ import { formatCurrency, formatPnl } from "../lib/format";
 export function DashboardScreen() {
   const navigate = useNavigate();
   const { status, connect, arm } = useExecutionStatus();
-  const { health, connectionState } = useEngineHealth();
+  const { health, connectionState } = useEngineConnection();
   const { showToast } = useToast();
 
   // Data state

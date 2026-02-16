@@ -47,8 +47,8 @@ export function StatusStrip({
   // Fake latency for prototype feel (would be real in production)
   const [latency, setLatency] = useState(12);
   // Fake sync state for demonstration
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncProgress, setSyncProgress] = useState(0);
+  const [isSyncing] = useState(false);
+  const [syncProgress] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {

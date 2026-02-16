@@ -56,10 +56,9 @@ export function DemoChecklist({ onScrollToBroker, onScrollToExecControl, onScrol
     setRunOnceLoading(true);
     setRunOnceResult(null);
     try {
-      const result = await engineClient.runOnce({
+      const result = await engineClient.placeOrder({
         symbol: "EURUSD",
-        bot: "CloudTwist",
-        side: "BUY",
+        direction: "BUY",
         size: 0.1,
       });
       setRunOnceResult(result);

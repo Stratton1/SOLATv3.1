@@ -8,9 +8,9 @@ Updated for every meaningful code change (enforced via pre-commit hook and CI gu
 | Item | Value |
 |------|-------|
 | **Branch** | `release/v3.1.0-alpha1` |
-| **Tests** | 847 passing, 0 failing |
-| **Phases complete** | 001-069 (foundations through terminal UI), 070 A-D+G (go-live hardening), 072 (tuning pipeline), Platform Outputs, CLI Fix + Sizing |
-| **Phases pending** | 070-E/F/H (live trading hardening) |
+| **Tests** | 924 passing, 0 failing |
+| **Phases complete** | 001-069 (foundations through terminal UI), 070 A-D+G (go-live hardening), 072 (tuning pipeline), Platform Outputs, CLI Fix + Sizing, Smoke-test fixes (A-C) |
+| **Phases pending** | Phase D (paper trading 48h), Phase E (go-live checklist) |
 | **Grand Sweep** | 180 combos (9 bots x 10 FX x 2 TFs), 21 min, all successful |
 | **Top performer** | CloudTwist/USDJPY/4h — Sharpe 28.5, 66.7% win rate |
 | **Broken bots** | ChikouConfirmer (0 trades), ReversalHunter (0 trades on 2024 data) |
